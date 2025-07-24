@@ -1,0 +1,37 @@
+# Go Development Shell Configuration
+
+# Go environment
+export GOPATH=/go
+export GOROOT=/usr/local/go
+export PATH=$GOROOT/bin:$GOPATH/bin:$PATH
+
+# Useful aliases for Go development
+alias gob='go build'
+alias gor='go run'
+alias got='go test'
+alias gotv='go test -v'
+alias gotr='go test -race'
+alias gom='go mod'
+alias gomi='go mod init'
+alias gomt='go mod tidy'
+alias gof='go fmt ./...'
+alias gol='golangci-lint run'
+alias goc='go clean -cache -modcache -i -r'
+
+# Git aliases
+alias gs='git status'
+alias ga='git add'
+alias gc='git commit'
+alias gp='git push'
+alias gl='git log --oneline'
+
+# Enhanced prompt with git branch
+parse_git_branch() {
+    git branch 2> /dev/null | sed -e '/^[^*]/d' -e 's/* \(.*\)/(\1)/'
+}
+export PS1="\u@\h \[\033[32m\]\w\[\033[33m\] \$(parse_git_branch)\[\033[00m\] $ "
+
+# Welcome message
+echo "🐹 Go Development Environment Ready!"
+echo "Go version: $(go version)"
+echo "Available aliases: gob, gor, got, gotv, gotr, gom, gomi, gomt, gof, gol, goc"
