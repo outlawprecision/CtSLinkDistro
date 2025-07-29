@@ -1,9 +1,5 @@
 # Go Development Shell Configuration
-
-# Go environment
-export GOPATH=/go
-export GOROOT=/usr/local/go
-export PATH=$GOROOT/bin:$GOPATH/bin:$PATH
+# (This file is optional - environment is set up in Dockerfile)
 
 # Useful aliases for Go development
 alias gob='go build'
@@ -32,6 +28,6 @@ parse_git_branch() {
 export PS1="\u@\h \[\033[32m\]\w\[\033[33m\] \$(parse_git_branch)\[\033[00m\] $ "
 
 # Welcome message
-echo "🐹 Go Development Environment Ready!"
+echo "🐹 Go Development Environment (Alpine Linux) Ready!"
 echo "Go version: $(go version)"
 echo "Available aliases: gob, gor, got, gotv, gotr, gom, gomi, gomt, gof, gol, goc"

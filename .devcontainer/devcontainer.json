@@ -1,58 +1,48 @@
 {
-    "name": "Go Development (Alpine)",
-    "image": "mcr.microsoft.com/devcontainers/base:alpine-3.18",
-    
-    "features": {
-      "ghcr.io/devcontainers/features/go:1": {
-        "version": "1.21"
-      },
-      "ghcr.io/devcontainers/features/git:1": {},
-      "ghcr.io/devcontainers/features/github-cli:1": {}
-    },
-  
-    "customizations": {
-      "vscode": {
-        "extensions": [
-          "golang.go",
-          "ms-vscode.vscode-json",
-          "redhat.vscode-yaml",
-          "ms-vscode.makefile-tools",
-          "streetsidesoftware.code-spell-checker",
-          "eamodio.gitlens",
-          "ms-vscode.vscode-docker"
-        ],
-        "settings": {
-          "go.toolsManagement.checkForUpdates": "local",
-          "go.useLanguageServer": true,
-          "go.gopath": "/go",
-          "go.goroot": "/usr/local/go",
-          "go.lintOnSave": "package",
-          "go.formatTool": "goimports",
-          "go.lintTool": "golangci-lint",
-          "go.testFlags": ["-v", "-race"],
-          "go.coverOnSave": true,
-          "go.coverageDecorator": "gutter",
-          "editor.formatOnSave": true,
-          "editor.codeActionsOnSave": {
-            "source.organizeImports": true
-          },
-          "terminal.integrated.defaultProfile.linux": "ash"
-        }
+  "name": "Go Development (Alpine)",
+  "build": {
+    "dockerfile": "Dockerfile"
+  },
+
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "golang.go",
+        "ms-vscode.vscode-json",
+        "redhat.vscode-yaml",
+        "ms-vscode.makefile-tools",
+        "streetsidesoftware.code-spell-checker",
+        "eamodio.gitlens",
+        "ms-vscode.vscode-docker"
+      ],
+      "settings": {
+        "go.toolsManagement.checkForUpdates": "local",
+        "go.useLanguageServer": true,
+        "go.gopath": "/go",
+        "go.goroot": "/usr/local/go",
+        "go.lintOnSave": "package",
+        "go.formatTool": "goimports",
+        "go.lintTool": "golangci-lint",
+        "go.testFlags": ["-v", "-race"],
+        "go.coverOnSave": true,
+        "go.coverageDecorator": "gutter",
+        "editor.formatOnSave": true,
+        "editor.codeActionsOnSave": {
+          "source.organizeImports": true
+        },
+        "terminal.integrated.defaultProfile.linux": "bash"
       }
-    },
-  
-    "forwardPorts": [8080, 3000, 9000],
-    
-    "postCreateCommand": "go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest && go install golang.org/x/tools/cmd/goimports@latest",
-    
-    "remoteUser": "vscode",
-    
-    "mounts": [
-      "source=${localWorkspaceFolder}/.devcontainer/bashrc,target=/home/vscode/.bashrc,type=bind,consistency=cached"
-    ],
-    
-    "containerEnv": {
-      "CGO_ENABLED": "0",
-      "GOOS": "linux"
     }
+  },
+
+  "forwardPorts": [8080, 3000, 9000],
+  
+  "postCreateCommand": "go version && echo 'Go development environment ready!'",
+  
+  "remoteUser": "vscode",
+  
+  "containerEnv": {
+    "CGO_ENABLED": "0",
+    "GOOS": "linux"
   }
+}
