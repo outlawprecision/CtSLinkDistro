@@ -16,10 +16,6 @@ run-web:
 	@echo "Starting web application..."
 	go run cmd/web/main.go
 
-run-local:
-	@echo "Starting web application in LOCAL DEVELOPMENT mode..."
-	go run cmd/web-local/main.go
-
 run-bot:
 	@echo "Starting Discord bot..."
 	go run cmd/discord-bot/main.go
@@ -101,7 +97,6 @@ help:
 	@echo "  build-web     - Build web application only"
 	@echo "  build-bot     - Build Discord bot only"
 	@echo "  run-web       - Run web application"
-	@echo "  run-local     - Run web application with sample data (no AWS needed)"
 	@echo "  run-bot       - Run Discord bot"
 	@echo "  test          - Run tests"
 	@echo "  clean         - Clean build artifacts"

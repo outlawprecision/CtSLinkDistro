@@ -1,5 +1,4 @@
-<<<<<<< HEAD
-# FlavaFlav - UO Outlands Guild Link Distribution System
+# CtSLinkDistro - UO Outlands Guild Link Distribution System
 
 A comprehensive web application and Discord bot for managing link distribution in UO Outlands guilds. Built with Go, AWS services, and modern web technologies.
 
@@ -32,11 +31,11 @@ A comprehensive web application and Discord bot for managing link distribution i
 - **Database**: AWS DynamoDB for scalable NoSQL storage
 - **Frontend**: Vanilla JavaScript with modern CSS
 - **Discord**: DiscordGo library for bot functionality
-- **Cloud**: Designed for AWS Lambda deployment
+- **Cloud**: AWS Lambda serverless deployment
 
 ### Project Structure
 ```
-flavaflav/
+CtSLinkDistro/
 ├── cmd/
 │   ├── web/           # Web application entry point
 │   ├── discord-bot/   # Discord bot entry point
@@ -45,26 +44,46 @@ flavaflav/
 │   ├── models/        # Data models and business logic
 │   ├── services/      # Business logic layer
 │   ├── handlers/      # HTTP handlers
-│   └── database/      # Database operations
+│   └── database/      # DynamoDB operations
 ├── web/
-│   ├── static/        # Frontend assets
-│   └── templates/     # HTML templates
-├── configs/           # Configuration files
-└── pkg/              # Shared utilities
+│   └── static/        # Frontend assets (HTML, CSS, JS)
+├── cloudformation/    # AWS CloudFormation templates
+├── scripts/          # Deployment and utility scripts
+├── docs/             # Documentation
+└── configs/          # Configuration files
 ```
 
-## Setup and Installation
+## Prerequisites
 
-### Prerequisites
 - Go 1.21 or higher
-- AWS Account with DynamoDB access
+- AWS Account with appropriate permissions
+- AWS CLI configured
 - Discord Bot Token (for Discord integration)
 
-### Environment Variables
+## Quick Start
+
+### 1. Clone and Setup
+```bash
+git clone https://github.com/outlawprecision/CtSLinkDistro.git
+cd CtSLinkDistro
+go mod tidy
+```
+
+### 2. Deploy to AWS
+```bash
+# Deploy to development environment
+make deploy-dev
+
+# Upload static files
+make upload-static BUCKET=your-s3-bucket-name
+```
+
+### 3. Configure Environment
+Copy `.env.example` to `.env` and configure:
 ```bash
 # AWS Configuration
 AWS_REGION=us-east-1
-DYNAMODB_TABLE=flavaflav
+DYNAMODB_TABLE=ctslinkdistro-dev
 AWS_ACCESS_KEY_ID=your_access_key
 AWS_SECRET_ACCESS_KEY=your_secret_key
 
@@ -72,43 +91,12 @@ AWS_SECRET_ACCESS_KEY=your_secret_key
 DISCORD_BOT_TOKEN=your_bot_token
 DISCORD_GUILD_ID=your_guild_id
 DISCORD_CHANNEL_ID=your_channel_id
-
-# Web Configuration
-PORT=8080
 ```
-
-### Installation Steps
-
-1. **Clone the repository**
-   ```bash
-   git clone <repository-url>
-   cd flavaflav
-   ```
-
-2. **Install dependencies**
-   ```bash
-   go mod tidy
-   ```
-
-3. **Configure AWS DynamoDB**
-   - Create a DynamoDB table named `flavaflav`
-   - Set up appropriate IAM permissions
-   - Configure AWS credentials
-
-4. **Run the web application**
-   ```bash
-   go run cmd/web/main.go
-   ```
-
-5. **Run the Discord bot (optional)**
-   ```bash
-   go run cmd/discord-bot/main.go
-   ```
 
 ## Usage
 
 ### Web Application
-1. Navigate to `http://localhost:8080`
+1. Access your deployed CloudFront URL
 2. Use the Dashboard to view current distribution status
 3. Add members through the Members tab
 4. Use the Picker Wheel to select winners
@@ -158,12 +146,12 @@ PORT=8080
 - `POST /api/utility/update-lists` - Update distribution lists
 - `GET /api/health` - Health check
 
-## Deployment
+## AWS Deployment
 
-### AWS CloudFormation Deployment (Recommended)
-The application includes complete CloudFormation infrastructure as code:
+### CloudFormation Deployment (Recommended)
+The application includes complete infrastructure as code:
 
-1. **Quick Deploy to Development**
+1. **Deploy to Development**
    ```bash
    make deploy-dev
    ```
@@ -190,8 +178,8 @@ The application includes complete CloudFormation infrastructure as code:
 - CloudWatch monitoring and alarms
 - IAM roles with least-privilege access
 
-### Manual AWS Lambda Deployment
-For manual deployment:
+### Manual Lambda Deployment
+For custom deployments:
 
 1. **Build for Lambda**
    ```bash
@@ -203,26 +191,27 @@ For manual deployment:
    - Configure environment variables
    - Set up API Gateway for HTTP endpoints
 
-### Traditional Server Deployment
-For traditional server deployment:
-
-1. **Build the application**
-   ```bash
-   make build-web
-   ```
-
-2. **Run the server**
-   ```bash
-   ./bin/flavaflav-web
-   ```
-
-### Deployment Options Summary
-- **CloudFormation** (Recommended): Complete infrastructure as code
-- **Manual Lambda**: For custom AWS setups
-- **Traditional Server**: For on-premises or custom cloud deployments
-- **Docker**: Container-based deployment (Makefile included)
-
 For detailed deployment instructions, see [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
+
+## Available Make Targets
+
+```bash
+# Development
+make build          # Build both applications
+make run-web        # Run web application locally (requires AWS)
+make run-bot        # Run Discord bot
+
+# AWS Deployment
+make deploy-dev     # Deploy to development environment
+make deploy-prod    # Deploy to production environment
+make update-lambda  # Update Lambda function code only
+make delete-stack   # Delete CloudFormation stack
+
+# Utilities
+make lambda-build   # Build for AWS Lambda
+make clean          # Clean build artifacts
+make help           # Show all available targets
+```
 
 ## Configuration
 
@@ -259,6 +248,3 @@ For support and questions:
 - UO Outlands community for requirements and feedback
 - Discord.js community for bot development guidance
 - AWS documentation for serverless architecture patterns
-=======
-# CtSLinkDistro
->>>>>>> b91d44918049e3449d79b50f1a486e26e57b4075

@@ -11,12 +11,12 @@ import (
 
 // MemberService handles member-related business logic
 type MemberService struct {
-	db     database.DatabaseService
+	db     *database.DynamoDBService
 	config *models.Config
 }
 
 // NewMemberService creates a new member service
-func NewMemberService(db database.DatabaseService, config *models.Config) *MemberService {
+func NewMemberService(db *database.DynamoDBService, config *models.Config) *MemberService {
 	return &MemberService{
 		db:     db,
 		config: config,

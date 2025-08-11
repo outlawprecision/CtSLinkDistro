@@ -12,13 +12,13 @@ import (
 
 // DistributionService handles link distribution logic
 type DistributionService struct {
-	db            database.DatabaseService
+	db            *database.DynamoDBService
 	memberService *MemberService
 	config        *models.Config
 }
 
 // NewDistributionService creates a new distribution service
-func NewDistributionService(db database.DatabaseService, memberService *MemberService, config *models.Config) *DistributionService {
+func NewDistributionService(db *database.DynamoDBService, memberService *MemberService, config *models.Config) *DistributionService {
 	return &DistributionService{
 		db:            db,
 		memberService: memberService,
