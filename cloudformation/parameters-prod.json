@@ -1,0 +1,14 @@
+[
+    {
+        "ParameterKey": "Environment",
+        "ParameterValue": "prod"
+    },
+    {
+        "ParameterKey": "DomainName",
+        "ParameterValue": ""
+    },
+    {
+        "ParameterKey": "CertificateArn",
+        "ParameterValue": ""
+    }
+]

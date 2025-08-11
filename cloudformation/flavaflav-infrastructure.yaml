@@ -1,0 +1,365 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "FlavaFlav - UO Outlands Guild Link Distribution System Infrastructure"
+
+Parameters:
+  Environment:
+    Type: String
+    Default: "dev"
+    AllowedValues: ["dev", "staging", "prod"]
+    Description: "Environment name"
+
+  DomainName:
+    Type: String
+    Default: ""
+    Description: "Custom domain name (optional)"
+
+  CertificateArn:
+    Type: String
+    Default: ""
+    Description: "SSL Certificate ARN for custom domain (optional)"
+
+Conditions:
+  HasCustomDomain: !Not [!Equals [!Ref DomainName, ""]]
+  HasCertificate: !Not [!Equals [!Ref CertificateArn, ""]]
+
+Resources:
+  # DynamoDB Table
+  FlavaFlavTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "flavaflav-${Environment}"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: "discord_id"
+          AttributeType: "S"
+        - AttributeName: "link_id"
+          AttributeType: "S"
+        - AttributeName: "list_type"
+          AttributeType: "S"
+        - AttributeName: "timestamp"
+          AttributeType: "S"
+      KeySchema:
+        - AttributeName: "discord_id"
+          KeyType: "HASH"
+      GlobalSecondaryIndexes:
+        - IndexName: "discord_id-timestamp-index"
+          KeySchema:
+            - AttributeName: "discord_id"
+              KeyType: "HASH"
+            - AttributeName: "timestamp"
+              KeyType: "RANGE"
+          Projection:
+            ProjectionType: "ALL"
+        - IndexName: "list_type-index"
+          KeySchema:
+            - AttributeName: "list_type"
+              KeyType: "HASH"
+          Projection:
+            ProjectionType: "ALL"
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      Tags:
+        - Key: "Environment"
+          Value: !Ref Environment
+        - Key: "Application"
+          Value: "FlavaFlav"
+
+  # IAM Role for Lambda
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "flavaflav-lambda-role-${Environment}"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: DynamoDBAccess
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:GetItem
+                  - dynamodb:PutItem
+                  - dynamodb:UpdateItem
+                  - dynamodb:DeleteItem
+                  - dynamodb:Query
+                  - dynamodb:Scan
+                Resource:
+                  - !GetAtt FlavaFlavTable.Arn
+                  - !Sub "${FlavaFlavTable.Arn}/index/*"
+
+  # Lambda Function
+  FlavaFlavLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub "flavaflav-api-${Environment}"
+      Runtime: provided.al2
+      Handler: bootstrap
+      Code:
+        ZipFile: |
+          # Placeholder - replace with actual deployment package
+          def lambda_handler(event, context):
+              return {'statusCode': 200, 'body': 'Placeholder'}
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Timeout: 30
+      MemorySize: 512
+      Environment:
+        Variables:
+          AWS_REGION: !Ref "AWS::Region"
+          DYNAMODB_TABLE: !Ref FlavaFlavTable
+          ENVIRONMENT: !Ref Environment
+      Tags:
+        - Key: "Environment"
+          Value: !Ref Environment
+        - Key: "Application"
+          Value: "FlavaFlav"
+
+  # Lambda Permission for API Gateway
+  LambdaApiGatewayPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref FlavaFlavLambda
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub "${FlavaFlavApi}/*/*"
+
+  # API Gateway
+  FlavaFlavApi:
+    Type: AWS::ApiGateway::RestApi
+    Properties:
+      Name: !Sub "flavaflav-api-${Environment}"
+      Description: "FlavaFlav API Gateway"
+      EndpointConfiguration:
+        Types:
+          - REGIONAL
+      Policy:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: "*"
+            Action: execute-api:Invoke
+            Resource: "*"
+
+  # API Gateway Deployment
+  ApiGatewayDeployment:
+    Type: AWS::ApiGateway::Deployment
+    DependsOn:
+      - ApiProxyMethod
+    Properties:
+      RestApiId: !Ref FlavaFlavApi
+      StageName: !Ref Environment
+
+  # API Gateway Resource (Proxy)
+  ApiProxyResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref FlavaFlavApi
+      ParentId: !GetAtt FlavaFlavApi.RootResourceId
+      PathPart: "{proxy+}"
+
+  # API Gateway Method (Proxy)
+  ApiProxyMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref FlavaFlavApi
+      ResourceId: !Ref ApiProxyResource
+      HttpMethod: ANY
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${FlavaFlavLambda.Arn}/invocations"
+
+  # API Gateway Method for Root
+  ApiRootMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref FlavaFlavApi
+      ResourceId: !GetAtt FlavaFlavApi.RootResourceId
+      HttpMethod: ANY
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${FlavaFlavLambda.Arn}/invocations"
+
+  # S3 Bucket for Static Files
+  StaticFilesBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "flavaflav-static-${Environment}-${AWS::AccountId}"
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: false
+        BlockPublicPolicy: false
+        IgnorePublicAcls: false
+        RestrictPublicBuckets: false
+      WebsiteConfiguration:
+        IndexDocument: index.html
+        ErrorDocument: index.html
+      CorsConfiguration:
+        CorsRules:
+          - AllowedHeaders: ["*"]
+            AllowedMethods: [GET, HEAD]
+            AllowedOrigins: ["*"]
+            MaxAge: 3600
+
+  # S3 Bucket Policy
+  StaticFilesBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref StaticFilesBucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: PublicReadGetObject
+            Effect: Allow
+            Principal: "*"
+            Action: s3:GetObject
+            Resource: !Sub "${StaticFilesBucket}/*"
+
+  # CloudFront Distribution
+  CloudFrontDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        Comment: !Sub "FlavaFlav CDN - ${Environment}"
+        DefaultRootObject: index.html
+        Aliases: !If
+          - HasCustomDomain
+          - [!Ref DomainName]
+          - !Ref "AWS::NoValue"
+        ViewerCertificate: !If
+          - HasCertificate
+          - AcmCertificateArn: !Ref CertificateArn
+            SslSupportMethod: sni-only
+            MinimumProtocolVersion: TLSv1.2_2021
+          - CloudFrontDefaultCertificate: true
+        Origins:
+          - Id: S3Origin
+            DomainName: !GetAtt StaticFilesBucket.RegionalDomainName
+            S3OriginConfig:
+              OriginAccessIdentity: ""
+          - Id: ApiGatewayOrigin
+            DomainName: !Sub "${FlavaFlavApi}.execute-api.${AWS::Region}.amazonaws.com"
+            CustomOriginConfig:
+              HTTPPort: 443
+              HTTPSPort: 443
+              OriginProtocolPolicy: https-only
+        DefaultCacheBehavior:
+          TargetOriginId: S3Origin
+          ViewerProtocolPolicy: redirect-to-https
+          AllowedMethods: [GET, HEAD, OPTIONS]
+          CachedMethods: [GET, HEAD]
+          ForwardedValues:
+            QueryString: false
+            Cookies:
+              Forward: none
+          Compress: true
+          DefaultTTL: 86400
+          MaxTTL: 31536000
+        CacheBehaviors:
+          - PathPattern: "/api/*"
+            TargetOriginId: ApiGatewayOrigin
+            ViewerProtocolPolicy: redirect-to-https
+            AllowedMethods: [DELETE, GET, HEAD, OPTIONS, PATCH, POST, PUT]
+            CachedMethods: [GET, HEAD]
+            ForwardedValues:
+              QueryString: true
+              Headers: ["*"]
+              Cookies:
+                Forward: all
+            Compress: false
+            DefaultTTL: 0
+            MaxTTL: 0
+            MinTTL: 0
+        CustomErrorResponses:
+          - ErrorCode: 404
+            ResponseCode: 200
+            ResponsePagePath: /index.html
+            ErrorCachingMinTTL: 300
+
+  # CloudWatch Log Group for Lambda
+  LambdaLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/flavaflav-api-${Environment}"
+      RetentionInDays: 14
+
+  # CloudWatch Alarms
+  LambdaErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub "flavaflav-lambda-errors-${Environment}"
+      AlarmDescription: "Lambda function errors"
+      MetricName: Errors
+      Namespace: AWS/Lambda
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 5
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref FlavaFlavLambda
+
+  DynamoDBThrottleAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub "flavaflav-dynamodb-throttles-${Environment}"
+      AlarmDescription: "DynamoDB throttling events"
+      MetricName: ThrottledRequests
+      Namespace: AWS/DynamoDB
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: TableName
+          Value: !Ref FlavaFlavTable
+
+Outputs:
+  ApiGatewayUrl:
+    Description: "API Gateway URL"
+    Value: !Sub "https://${FlavaFlavApi}.execute-api.${AWS::Region}.amazonaws.com/${Environment}"
+    Export:
+      Name: !Sub "${AWS::StackName}-ApiUrl"
+
+  CloudFrontUrl:
+    Description: "CloudFront Distribution URL"
+    Value: !Sub "https://${CloudFrontDistribution.DomainName}"
+    Export:
+      Name: !Sub "${AWS::StackName}-CloudFrontUrl"
+
+  CustomDomainUrl:
+    Condition: HasCustomDomain
+    Description: "Custom Domain URL"
+    Value: !Sub "https://${DomainName}"
+    Export:
+      Name: !Sub "${AWS::StackName}-CustomDomainUrl"
+
+  DynamoDBTableName:
+    Description: "DynamoDB Table Name"
+    Value: !Ref FlavaFlavTable
+    Export:
+      Name: !Sub "${AWS::StackName}-TableName"
+
+  S3BucketName:
+    Description: "S3 Bucket for Static Files"
+    Value: !Ref StaticFilesBucket
+    Export:
+      Name: !Sub "${AWS::StackName}-S3Bucket"
+
+  LambdaFunctionName:
+    Description: "Lambda Function Name"
+    Value: !Ref FlavaFlavLambda
+    Export:
+      Name: !Sub "${AWS::StackName}-LambdaFunction"

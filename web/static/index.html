@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FlavaFlav - UO Outlands Guild Link Distribution</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+
+<body>
+    <div class="container">
+        <header>
+            <h1>🎯 FlavaFlav</h1>
+            <p>UO Outlands Guild Link Distribution System</p>
+        </header>
+
+        <nav class="nav-tabs">
+            <button class="tab-button active" onclick="showTab('dashboard')">Dashboard</button>
+            <button class="tab-button" onclick="showTab('wheel')">Picker Wheel</button>
+            <button class="tab-button" onclick="showTab('members')">Members</button>
+            <button class="tab-button" onclick="showTab('history')">History</button>
+        </nav>
+
+        <!-- Dashboard Tab -->
+        <div id="dashboard" class="tab-content active">
+            <div class="dashboard-grid">
+                <div class="status-card">
+                    <h3>Silver Links</h3>
+                    <div id="silver-status">
+                        <div class="status-item">
+                            <span class="label">Eligible:</span>
+                            <span id="silver-eligible">-</span>
+                        </div>
+                        <div class="status-item">
+                            <span class="label">Completed:</span>
+                            <span id="silver-completed">-</span>
+                        </div>
+                        <div class="status-item">
+                            <span class="label">Compensation Queue:</span>
+                            <span id="silver-compensation">-</span>
+                        </div>
+                        <div class="status-item">
+                            <span class="label">Progress:</span>
+                            <span id="silver-progress">-</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="status-card">
+                    <h3>Gold Links</h3>
+                    <div id="gold-status">
+                        <div class="status-item">
+                            <span class="label">Eligible:</span>
+                            <span id="gold-eligible">-</span>
+                        </div>
+                        <div class="status-item">
+                            <span class="label">Completed:</span>
+                            <span id="gold-completed">-</span>
+                        </div>
+                        <div class="status-item">
+                            <span class="label">Compensation Queue:</span>
+                            <span id="gold-compensation">-</span>
+                        </div>
+                        <div class="status-item">
+                            <span class="label">Progress:</span>
+                            <span id="gold-progress">-</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="actions">
+                <button class="btn btn-primary" onclick="refreshStatus()">Refresh Status</button>
+                <button class="btn btn-secondary" onclick="updateLists()">Update Lists</button>
+                <button class="btn btn-warning" onclick="resetWeekly()">Reset Weekly Participation</button>
+            </div>
+        </div>
+
+        <!-- Picker Wheel Tab -->
+        <div id="wheel" class="tab-content">
+            <div class="wheel-container">
+                <div class="wheel-controls">
+                    <div class="link-type-selector">
+                        <label>
+                            <input type="radio" name="linkType" value="silver" checked>
+                            Silver Links
+                        </label>
+                        <label>
+                            <input type="radio" name="linkType" value="gold">
+                            Gold Links
+                        </label>
+                    </div>
+                    <button class="btn btn-large btn-primary" onclick="spinWheel()" id="spin-button">
+                        🎯 SPIN THE WHEEL
+                    </button>
+                </div>
+
+                <div class="wheel-display">
+                    <canvas id="wheelCanvas" width="400" height="400"></canvas>
+                    <div class="wheel-pointer">▼</div>
+                </div>
+
+                <div id="winner-display" class="winner-display" style="display: none;">
+                    <h3>🎉 Winner Selected!</h3>
+                    <div id="winner-info"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Members Tab -->
+        <div id="members" class="tab-content">
+            <div class="members-controls">
+                <button class="btn btn-primary" onclick="showAddMemberForm()">Add Member</button>
+                <input type="text" id="member-search" placeholder="Search members..." onkeyup="filterMembers()">
+            </div>
+
+            <div id="add-member-form" class="form-container" style="display: none;">
+                <h3>Add New Member</h3>
+                <form onsubmit="addMember(event)">
+                    <div class="form-group">
+                        <label>Discord ID:</label>
+                        <input type="text" id="discord-id" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Discord Username:</label>
+                        <input type="text" id="discord-username" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Character Names (comma separated):</label>
+                        <input type="text" id="character-names" placeholder="Character1, Character2, ...">
+                    </div>
+                    <div class="form-group">
+                        <label>Guild Join Date:</label>
+                        <input type="date" id="guild-join-date" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Role:</label>
+                        <select id="role" required>
+                            <option value="user">User</option>
+                            <option value="officer">Officer</option>
+                            <option value="admin">Admin</option>
+                        </select>
+                    </div>
+                    <div class="form-actions">
+                        <button type="submit" class="btn btn-primary">Add Member</button>
+                        <button type="button" class="btn btn-secondary" onclick="hideAddMemberForm()">Cancel</button>
+                    </div>
+                </form>
+            </div>
+
+            <div id="members-list" class="members-list">
+                <!-- Members will be loaded here -->
+            </div>
+        </div>
+
+        <!-- History Tab -->
+        <div id="history" class="tab-content">
+            <div class="history-controls">
+                <select id="history-filter">
+                    <option value="all">All Links</option>
+                    <option value="silver">Silver Links</option>
+                    <option value="gold">Gold Links</option>
+                    <option value="compensation">Compensation Links</option>
+                </select>
+                <button class="btn btn-primary" onclick="loadHistory()">Refresh</button>
+            </div>
+            <div id="history-list" class="history-list">
+                <!-- History will be loaded here -->
+            </div>
+        </div>
+    </div>
+
+    <div id="loading" class="loading" style="display: none;">
+        <div class="spinner"></div>
+    </div>
+
+    <div id="notification" class="notification" style="display: none;"></div>
+
+    <script src="app.js"></script>
+</body>
+
+</html>
