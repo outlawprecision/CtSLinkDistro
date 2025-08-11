@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # FlavaFlav - UO Outlands Guild Link Distribution System
 
 A comprehensive web application and Discord bot for managing link distribution in UO Outlands guilds. Built with Go, AWS services, and modern web technologies.
@@ -258,3 +259,6 @@ For support and questions:
 - UO Outlands community for requirements and feedback
 - Discord.js community for bot development guidance
 - AWS documentation for serverless architecture patterns
+=======
+# CtSLinkDistro
+>>>>>>> b91d44918049e3449d79b50f1a486e26e57b4075
