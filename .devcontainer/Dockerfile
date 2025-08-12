@@ -25,7 +25,8 @@ RUN apk add --no-cache \
     htop \
     tree \
     jq \
-    github-cli
+    github-cli \
+    aws-cli
 
 # Create vscode user with sudo access
 RUN addgroup -g 1000 vscode && \

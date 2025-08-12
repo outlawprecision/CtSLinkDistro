@@ -30,6 +30,8 @@ Resources:
       TableName: !Sub "flavaflav-${Environment}"
       BillingMode: PAY_PER_REQUEST
       AttributeDefinitions:
+        - AttributeName: "user_id"
+          AttributeType: "S" # Fixed: was "HASH"
         - AttributeName: "discord_id"
           AttributeType: "S"
         - AttributeName: "link_id"
@@ -53,6 +55,18 @@ Resources:
         - IndexName: "list_type-index"
           KeySchema:
             - AttributeName: "list_type"
+              KeyType: "HASH"
+          Projection:
+            ProjectionType: "ALL"
+        - IndexName: "user_id-index" # Added to use user_id
+          KeySchema:
+            - AttributeName: "user_id"
+              KeyType: "HASH"
+          Projection:
+            ProjectionType: "ALL"
+        - IndexName: "link_id-index" # Added to use link_id
+          KeySchema:
+            - AttributeName: "link_id"
               KeyType: "HASH"
           Projection:
             ProjectionType: "ALL"
@@ -103,16 +117,14 @@ Resources:
       Runtime: provided.al2
       Handler: bootstrap
       Code:
-        ZipFile: |
-          # Placeholder - replace with actual deployment package
-          def lambda_handler(event, context):
-              return {'statusCode': 200, 'body': 'Placeholder'}
+        S3Bucket: sherwood-artifacts
+        S3Key: lambda-deployment.zip
       Role: !GetAtt LambdaExecutionRole.Arn
       Timeout: 30
       MemorySize: 512
       Environment:
         Variables:
-          AWS_REGION: !Ref "AWS::Region"
+          REGION: !Ref "AWS::Region"
           DYNAMODB_TABLE: !Ref FlavaFlavTable
           ENVIRONMENT: !Ref Environment
       Tags:
@@ -120,15 +132,6 @@ Resources:
           Value: !Ref Environment
         - Key: "Application"
           Value: "FlavaFlav"
-
-  # Lambda Permission for API Gateway
-  LambdaApiGatewayPermission:
-    Type: AWS::Lambda::Permission
-    Properties:
-      FunctionName: !Ref FlavaFlavLambda
-      Action: lambda:InvokeFunction
-      Principal: apigateway.amazonaws.com
-      SourceArn: !Sub "${FlavaFlavApi}/*/*"
 
   # API Gateway
   FlavaFlavApi:
@@ -147,6 +150,14 @@ Resources:
             Action: execute-api:Invoke
             Resource: "*"
 
+  # Lambda Permission for API Gateway
+  LambdaApiGatewayPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref FlavaFlavLambda
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${FlavaFlavApi}/*/*"
   # API Gateway Deployment
   ApiGatewayDeployment:
     Type: AWS::ApiGateway::Deployment
@@ -222,7 +233,7 @@ Resources:
             Effect: Allow
             Principal: "*"
             Action: s3:GetObject
-            Resource: !Sub "${StaticFilesBucket}/*"
+            Resource: !Sub "arn:aws:s3:::${StaticFilesBucket}/*"
 
   # CloudFront Distribution
   CloudFrontDistribution:
