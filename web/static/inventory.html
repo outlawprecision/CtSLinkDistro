@@ -254,10 +254,13 @@
             try {
                 showLoading();
 
+                // API base URL - Use direct API Gateway URL to bypass CloudFront issues
+                const API_BASE = 'https://kiyajsbp09.execute-api.us-east-1.amazonaws.com/dev/api';
+
                 // Load summary and inventory data
                 const [summaryResponse, inventoryResponse] = await Promise.all([
-                    fetch('/api/inventory/summary'),
-                    fetch('/api/inventory')
+                    fetch(`${API_BASE}/inventory/summary`),
+                    fetch(`${API_BASE}/inventory`)
                 ]);
 
                 if (!summaryResponse.ok || !inventoryResponse.ok) {
@@ -411,6 +414,8 @@
 
         async function updateLinkCounts(linkType) {
             try {
+                const API_BASE = 'https://kiyajsbp09.execute-api.us-east-1.amazonaws.com/dev/api';
+
                 const bronzeInput = document.getElementById(`bronze-${linkType}`);
                 const silverInput = document.getElementById(`silver-${linkType}`);
                 const goldInput = document.getElementById(`gold-${linkType}`);
@@ -445,7 +450,7 @@
                     return; // No changes
                 }
 
-                const response = await fetch('/api/inventory/bulk-update', {
+                const response = await fetch(`${API_BASE}/inventory/bulk-update`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
@@ -481,7 +486,9 @@
             try {
                 showLoading();
 
-                const response = await fetch('/api/inventory/initialize', {
+                const API_BASE = 'https://kiyajsbp09.execute-api.us-east-1.amazonaws.com/dev/api';
+
+                const response = await fetch(`${API_BASE}/inventory/initialize`, {
                     method: 'POST'
                 });
 
