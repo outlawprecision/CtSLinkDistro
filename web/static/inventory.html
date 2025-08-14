@@ -1,0 +1,523 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Link Inventory - CtSLinkDistro</title>
+    <link rel="stylesheet" href="styles.css">
+    <style>
+        .inventory-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .inventory-summary {
+            background: #2a2a2a;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 30px;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+        }
+
+        .summary-card {
+            text-align: center;
+            padding: 15px;
+            background: #3a3a3a;
+            border-radius: 8px;
+        }
+
+        .summary-card h3 {
+            margin: 0 0 10px 0;
+            color: #ffd700;
+        }
+
+        .summary-card .count {
+            font-size: 2em;
+            font-weight: bold;
+            margin: 10px 0;
+        }
+
+        .bronze {
+            color: #cd7f32;
+        }
+
+        .silver {
+            color: #c0c0c0;
+        }
+
+        .gold {
+            color: #ffd700;
+        }
+
+        .category-section {
+            background: #2a2a2a;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+
+        .category-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            cursor: pointer;
+        }
+
+        .category-header h2 {
+            margin: 0;
+            color: #ffd700;
+        }
+
+        .toggle-icon {
+            font-size: 1.2em;
+            transition: transform 0.3s ease;
+        }
+
+        .category-content {
+            display: none;
+        }
+
+        .category-content.expanded {
+            display: block;
+        }
+
+        .category-header.expanded .toggle-icon {
+            transform: rotate(180deg);
+        }
+
+        .link-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 15px;
+        }
+
+        .link-item {
+            background: #3a3a3a;
+            border-radius: 8px;
+            padding: 15px;
+            border-left: 4px solid #ffd700;
+        }
+
+        .link-name {
+            font-weight: bold;
+            margin-bottom: 10px;
+            color: #fff;
+        }
+
+        .link-bonuses {
+            font-size: 0.9em;
+            color: #ccc;
+            margin-bottom: 10px;
+        }
+
+        .link-counts {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .count-group {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .count-input {
+            width: 60px;
+            padding: 5px;
+            border: 1px solid #555;
+            border-radius: 4px;
+            background: #1a1a1a;
+            color: #fff;
+            text-align: center;
+        }
+
+        .update-btn {
+            background: #4CAF50;
+            color: white;
+            border: none;
+            padding: 5px 10px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.8em;
+        }
+
+        .update-btn:hover {
+            background: #45a049;
+        }
+
+        .controls {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-block;
+        }
+
+        .btn:hover {
+            background: #0056b3;
+        }
+
+        .btn-success {
+            background: #28a745;
+        }
+
+        .btn-success:hover {
+            background: #1e7e34;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #ccc;
+        }
+
+        .error {
+            background: #dc3545;
+            color: white;
+            padding: 10px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+
+        @media (max-width: 768px) {
+            .inventory-summary {
+                grid-template-columns: 1fr;
+            }
+
+            .link-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .controls {
+                flex-direction: column;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <header>
+            <h1>🔗 Link Inventory</h1>
+            <nav>
+                <a href="index.html">Dashboard</a>
+                <a href="inventory.html" class="active">Inventory</a>
+            </nav>
+        </header>
+
+        <div class="inventory-container">
+            <div class="controls">
+                <button class="btn btn-success" onclick="initializeInventory()">Initialize Inventory</button>
+                <button class="btn" onclick="refreshInventory()">Refresh</button>
+                <button class="btn" onclick="expandAllCategories()">Expand All</button>
+                <button class="btn" onclick="collapseAllCategories()">Collapse All</button>
+            </div>
+
+            <div id="error-message" class="error" style="display: none;"></div>
+
+            <div id="inventory-summary" class="inventory-summary">
+                <div class="loading">Loading inventory summary...</div>
+            </div>
+
+            <div id="inventory-categories">
+                <div class="loading">Loading inventory...</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let inventoryData = [];
+        let summaryData = null;
+
+        // Load inventory on page load
+        document.addEventListener('DOMContentLoaded', function () {
+            loadInventory();
+        });
+
+        async function loadInventory() {
+            try {
+                showLoading();
+
+                // Load summary and inventory data
+                const [summaryResponse, inventoryResponse] = await Promise.all([
+                    fetch('/api/inventory/summary'),
+                    fetch('/api/inventory')
+                ]);
+
+                if (!summaryResponse.ok || !inventoryResponse.ok) {
+                    throw new Error('Failed to load inventory data');
+                }
+
+                const summaryResult = await summaryResponse.json();
+                const inventoryResult = await inventoryResponse.json();
+
+                if (!summaryResult.success || !inventoryResult.success) {
+                    throw new Error(summaryResult.error || inventoryResult.error || 'Unknown error');
+                }
+
+                summaryData = summaryResult.data;
+                inventoryData = inventoryResult.data;
+
+                renderSummary();
+                renderInventory();
+                hideError();
+            } catch (error) {
+                console.error('Error loading inventory:', error);
+                showError('Failed to load inventory: ' + error.message);
+            }
+        }
+
+        function renderSummary() {
+            const summaryContainer = document.getElementById('inventory-summary');
+
+            if (!summaryData) {
+                summaryContainer.innerHTML = '<div class="loading">No summary data available</div>';
+                return;
+            }
+
+            summaryContainer.innerHTML = `
+                <div class="summary-card">
+                    <h3>Total Items</h3>
+                    <div class="count">${summaryData.total_items}</div>
+                </div>
+                <div class="summary-card">
+                    <h3>Total Links</h3>
+                    <div class="count">${summaryData.total_links}</div>
+                </div>
+                <div class="summary-card">
+                    <h3>Bronze Links</h3>
+                    <div class="count bronze">${summaryData.total_bronze}</div>
+                </div>
+                <div class="summary-card">
+                    <h3>Silver Links</h3>
+                    <div class="count silver">${summaryData.total_silver}</div>
+                </div>
+                <div class="summary-card">
+                    <h3>Gold Links</h3>
+                    <div class="count gold">${summaryData.total_gold}</div>
+                </div>
+            `;
+        }
+
+        function renderInventory() {
+            const container = document.getElementById('inventory-categories');
+
+            if (!inventoryData || inventoryData.length === 0) {
+                container.innerHTML = '<div class="loading">No inventory data available</div>';
+                return;
+            }
+
+            // Group items by category
+            const categories = {};
+            inventoryData.forEach(item => {
+                if (!categories[item.category]) {
+                    categories[item.category] = [];
+                }
+                categories[item.category].push(item);
+            });
+
+            let html = '';
+            Object.keys(categories).forEach(categoryName => {
+                const items = categories[categoryName];
+                html += `
+                    <div class="category-section">
+                        <div class="category-header" onclick="toggleCategory('${categoryName}')">
+                            <h2>${categoryName}</h2>
+                            <span class="toggle-icon">▼</span>
+                        </div>
+                        <div class="category-content" id="category-${categoryName}">
+                            <div class="link-grid">
+                                ${items.map(item => renderLinkItem(item)).join('')}
+                            </div>
+                        </div>
+                    </div>
+                `;
+            });
+
+            container.innerHTML = html;
+        }
+
+        function renderLinkItem(item) {
+            return `
+                <div class="link-item">
+                    <div class="link-name">${item.link_type}</div>
+                    <div class="link-bonuses">
+                        Bronze: ${item.bronze_bonus} | Silver: ${item.silver_bonus} | Gold: ${item.gold_bonus}
+                    </div>
+                    <div class="link-counts">
+                        <div class="count-group">
+                            <span class="bronze">Bronze:</span>
+                            <input type="number" class="count-input bronze" value="${item.bronze_count}" 
+                                   id="bronze-${item.link_type}" min="0">
+                        </div>
+                        <div class="count-group">
+                            <span class="silver">Silver:</span>
+                            <input type="number" class="count-input silver" value="${item.silver_count}" 
+                                   id="silver-${item.link_type}" min="0">
+                        </div>
+                        <div class="count-group">
+                            <span class="gold">Gold:</span>
+                            <input type="number" class="count-input gold" value="${item.gold_count}" 
+                                   id="gold-${item.link_type}" min="0">
+                        </div>
+                        <button class="update-btn" onclick="updateLinkCounts('${item.link_type}')">Update</button>
+                    </div>
+                </div>
+            `;
+        }
+
+        function toggleCategory(categoryName) {
+            const content = document.getElementById(`category-${categoryName}`);
+            const header = content.previousElementSibling;
+
+            if (content.classList.contains('expanded')) {
+                content.classList.remove('expanded');
+                header.classList.remove('expanded');
+            } else {
+                content.classList.add('expanded');
+                header.classList.add('expanded');
+            }
+        }
+
+        function expandAllCategories() {
+            document.querySelectorAll('.category-content').forEach(content => {
+                content.classList.add('expanded');
+                content.previousElementSibling.classList.add('expanded');
+            });
+        }
+
+        function collapseAllCategories() {
+            document.querySelectorAll('.category-content').forEach(content => {
+                content.classList.remove('expanded');
+                content.previousElementSibling.classList.remove('expanded');
+            });
+        }
+
+        async function updateLinkCounts(linkType) {
+            try {
+                const bronzeInput = document.getElementById(`bronze-${linkType}`);
+                const silverInput = document.getElementById(`silver-${linkType}`);
+                const goldInput = document.getElementById(`gold-${linkType}`);
+
+                const updates = [];
+
+                if (bronzeInput.value !== bronzeInput.defaultValue) {
+                    updates.push({
+                        link_type: linkType,
+                        quality: 'bronze',
+                        new_count: parseInt(bronzeInput.value)
+                    });
+                }
+
+                if (silverInput.value !== silverInput.defaultValue) {
+                    updates.push({
+                        link_type: linkType,
+                        quality: 'silver',
+                        new_count: parseInt(silverInput.value)
+                    });
+                }
+
+                if (goldInput.value !== goldInput.defaultValue) {
+                    updates.push({
+                        link_type: linkType,
+                        quality: 'gold',
+                        new_count: parseInt(goldInput.value)
+                    });
+                }
+
+                if (updates.length === 0) {
+                    return; // No changes
+                }
+
+                const response = await fetch('/api/inventory/bulk-update', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        updates: updates,
+                        reason: 'Manual update from web interface'
+                    })
+                });
+
+                const result = await response.json();
+
+                if (!result.success) {
+                    throw new Error(result.error || 'Update failed');
+                }
+
+                // Update default values
+                bronzeInput.defaultValue = bronzeInput.value;
+                silverInput.defaultValue = silverInput.value;
+                goldInput.defaultValue = goldInput.value;
+
+                // Refresh summary
+                await loadInventory();
+
+                hideError();
+            } catch (error) {
+                console.error('Error updating inventory:', error);
+                showError('Failed to update inventory: ' + error.message);
+            }
+        }
+
+        async function initializeInventory() {
+            try {
+                showLoading();
+
+                const response = await fetch('/api/inventory/initialize', {
+                    method: 'POST'
+                });
+
+                const result = await response.json();
+
+                if (!result.success) {
+                    throw new Error(result.error || 'Initialization failed');
+                }
+
+                await loadInventory();
+                hideError();
+            } catch (error) {
+                console.error('Error initializing inventory:', error);
+                showError('Failed to initialize inventory: ' + error.message);
+            }
+        }
+
+        function refreshInventory() {
+            loadInventory();
+        }
+
+        function showLoading() {
+            document.getElementById('inventory-summary').innerHTML = '<div class="loading">Loading...</div>';
+            document.getElementById('inventory-categories').innerHTML = '<div class="loading">Loading...</div>';
+        }
+
+        function showError(message) {
+            const errorDiv = document.getElementById('error-message');
+            errorDiv.textContent = message;
+            errorDiv.style.display = 'block';
+        }
+
+        function hideError() {
+            document.getElementById('error-message').style.display = 'none';
+        }
+    </script>
+</body>
+
+</html>

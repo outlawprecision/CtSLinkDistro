@@ -41,6 +41,7 @@ func main() {
 	// Initialize services
 	memberService := services.NewMemberService(db, config)
 	distributionService := services.NewDistributionService(db, memberService, config)
+	inventoryService := services.NewInventoryService(db, config)
 
 	// Initialize distribution lists
 	ctx := context.Background()
@@ -49,8 +50,14 @@ func main() {
 		log.Printf("Warning: Failed to initialize distribution lists: %v", err)
 	}
 
+	// Initialize inventory
+	err = inventoryService.InitializeInventory(ctx)
+	if err != nil {
+		log.Printf("Warning: Failed to initialize inventory: %v", err)
+	}
+
 	// Initialize handlers
-	webHandlers := handlers.NewWebHandlers(memberService, distributionService)
+	webHandlers := handlers.NewWebHandlers(memberService, distributionService, inventoryService)
 
 	handler := &LambdaHandler{
 		webHandlers: webHandlers,
@@ -142,6 +149,20 @@ func (h *LambdaHandler) routeRequest(w http.ResponseWriter, r *http.Request) {
 		h.webHandlers.ForceCompleteList(w, r)
 	case r.URL.Path == "/api/distribution/eligible":
 		h.webHandlers.GetEligibleMembers(w, r)
+	case r.URL.Path == "/api/inventory":
+		h.webHandlers.GetInventory(w, r)
+	case r.URL.Path == "/api/inventory/item":
+		h.webHandlers.GetInventoryItem(w, r)
+	case r.URL.Path == "/api/inventory/summary":
+		h.webHandlers.GetInventorySummary(w, r)
+	case r.URL.Path == "/api/inventory/update":
+		h.webHandlers.UpdateInventoryItem(w, r)
+	case r.URL.Path == "/api/inventory/bulk-update":
+		h.webHandlers.BulkUpdateInventory(w, r)
+	case r.URL.Path == "/api/inventory/transactions":
+		h.webHandlers.GetInventoryTransactions(w, r)
+	case r.URL.Path == "/api/inventory/initialize":
+		h.webHandlers.InitializeInventory(w, r)
 	case r.URL.Path == "/api/utility/reset-weekly":
 		h.webHandlers.ResetWeeklyParticipation(w, r)
 	case r.URL.Path == "/api/utility/update-lists":

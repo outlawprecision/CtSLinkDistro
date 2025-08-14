@@ -37,6 +37,7 @@ func main() {
 	// Initialize services
 	memberService := services.NewMemberService(db, config)
 	distributionService := services.NewDistributionService(db, memberService, config)
+	inventoryService := services.NewInventoryService(db, config)
 
 	// Initialize distribution lists
 	ctx := context.Background()
@@ -45,8 +46,14 @@ func main() {
 		log.Printf("Warning: Failed to initialize distribution lists: %v", err)
 	}
 
+	// Initialize inventory
+	err = inventoryService.InitializeInventory(ctx)
+	if err != nil {
+		log.Printf("Warning: Failed to initialize inventory: %v", err)
+	}
+
 	// Initialize handlers
-	webHandlers := handlers.NewWebHandlers(memberService, distributionService)
+	webHandlers := handlers.NewWebHandlers(memberService, distributionService, inventoryService)
 
 	// Setup routes
 	mux := webHandlers.SetupRoutes()
