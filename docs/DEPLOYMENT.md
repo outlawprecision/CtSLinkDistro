@@ -32,12 +32,19 @@ aws configure
 
 ### 2. Deploy to Development Environment
 ```bash
-# Deploy everything
+# Deploy everything (builds Lambda, uploads to S3, deploys CloudFormation)
 make deploy-dev
 
 # Or use the script directly
 ./scripts/deploy.sh -e dev
 ```
+
+The deployment script will:
+1. Build the Lambda function binary
+2. Package it as `flavaflav-lambda-{environment}.zip`
+3. Upload to `s3://sherwood-artifacts/flavaflav/lambda/`
+4. Deploy CloudFormation with Lambda pointing to the S3 package
+5. Output the deployment URLs
 
 ### 3. Upload Static Files
 After deployment, upload the web interface files:
@@ -55,6 +62,12 @@ make build
 
 # Build Lambda function specifically
 make lambda-build
+
+# Build and package Lambda for a specific environment
+make lambda-package ENV=dev
+
+# Build, package, and upload Lambda to S3
+make lambda-upload ENV=dev
 ```
 
 ### Step 2: Configure Parameters
@@ -175,9 +188,20 @@ After deployment, create a CNAME record pointing to the CloudFront distribution.
 
 ### Update Lambda Code Only
 ```bash
-# Quick update for code changes
-make update-lambda
+# Quick update for dev environment
+make update-lambda-dev
+
+# Update staging environment
+make update-lambda-staging
+
+# Update production environment
+make update-lambda-prod
 ```
+
+This will:
+1. Build the new Lambda binary
+2. Upload to S3 at `s3://sherwood-artifacts/flavaflav/lambda/`
+3. Update the Lambda function to use the new code
 
 ### Full Infrastructure Update
 ```bash
@@ -219,11 +243,22 @@ curl $API_URL/api/health
 
 ### Common Issues
 
-#### 1. Lambda Function Too Large
+#### 1. Lambda Deployment Issues
+
+**ZipFile not supported error:**
+This has been fixed. The Lambda now deploys from S3 instead of inline code.
+
+**Lambda Function Too Large:**
 If the Lambda deployment package exceeds 50MB:
 - Use Lambda Layers for dependencies
-- Optimize binary size with build flags
+- Optimize binary size with build flags: `CGO_ENABLED=0` and `-ldflags="-s -w"`
 - Consider using container images
+
+**S3 Access Denied:**
+Ensure your AWS credentials have access to the `sherwood-artifacts` bucket:
+```bash
+aws s3 ls s3://sherwood-artifacts/flavaflav/lambda/
+```
 
 #### 2. DynamoDB Throttling
 If you see throttling errors:
@@ -303,12 +338,35 @@ aws dynamodb create-backup \
 - Lambda function code can be downloaded from AWS Console
 - CloudFormation templates provide infrastructure as code
 
+## Lambda Artifacts
+
+All Lambda deployment packages are stored in S3:
+- **Bucket**: `sherwood-artifacts`
+- **Path**: `flavaflav/lambda/`
+- **Naming**: `flavaflav-lambda-{environment}.zip`
+
+Example S3 structure:
+```
+s3://sherwood-artifacts/
+└── flavaflav/
+    └── lambda/
+        ├── flavaflav-lambda-dev.zip
+        ├── flavaflav-lambda-staging.zip
+        └── flavaflav-lambda-prod.zip
+```
+
+To manually upload a Lambda package:
+```bash
+make lambda-upload ENV=dev
+```
+
 ## Performance Tuning
 
 ### Lambda Optimization
 - Monitor execution duration and memory usage
 - Adjust memory allocation based on CloudWatch metrics
 - Consider provisioned concurrency for consistent performance
+- Binary is built with `CGO_ENABLED=0` for smaller size and better compatibility
 
 ### DynamoDB Optimization
 - Monitor read/write capacity utilization

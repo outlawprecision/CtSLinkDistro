@@ -61,69 +61,15 @@ func generateLinkID(linkType, quality string) string {
 	return fmt.Sprintf("%s_%s_%d", quality, linkType, timestamp)
 }
 
-// Common mastery link types with their standard bonuses
-var MasteryLinkBonuses = map[string]map[string]string{
-	"Melee Damage": {
-		QualityBronze: "3.00%",
-		QualitySilver: "3.75%",
-		QualityGold:   "4.50%",
-	},
-	"Melee Accuracy": {
-		QualityBronze: "1.75%",
-		QualitySilver: "2.19%",
-		QualityGold:   "2.62%",
-	},
-	"Spell Damage": {
-		QualityBronze: "3.00%",
-		QualitySilver: "3.75%",
-		QualityGold:   "4.50%",
-	},
-	"Damage to Undead Creatures": {
-		QualityBronze: "2.50%",
-		QualitySilver: "3.13%",
-		QualityGold:   "3.75%",
-	},
-	"Inferno Damage": {
-		QualityBronze: "2.00%",
-		QualitySilver: "2.50%",
-		QualityGold:   "3.00%",
-	},
-	"Follower Damage": {
-		QualityBronze: "2.00%",
-		QualitySilver: "2.50%",
-		QualityGold:   "3.00%",
-	},
-	"Gold/Doubloon Drop Increase": {
-		QualityBronze: "3.00%",
-		QualitySilver: "3.75%",
-		QualityGold:   "4.50%",
-	},
-}
-
 // GetLinkBonus returns the standard bonus for a link type and quality
 func GetLinkBonus(linkType, quality string) string {
-	if linkBonuses, exists := MasteryLinkBonuses[linkType]; exists {
-		if bonus, qualityExists := linkBonuses[quality]; qualityExists {
-			return bonus
-		}
-	}
-	return "TBD" // To be determined for custom links
+	// Use the comprehensive link type data from link_types.go
+	return GetLinkTypeBonus(linkType, quality)
 }
 
 // GetLinkCategory returns the category for a link type
 func GetLinkCategory(linkType string) string {
-	categoryMap := map[string]string{
-		"Melee Damage":                "Melee Type Links",
-		"Melee Accuracy":              "Melee Type Links",
-		"Spell Damage":                "Spell Type Links",
-		"Damage to Undead Creatures":  "Monster Slayer Links",
-		"Inferno Damage":              "Dungeon Slayer Links",
-		"Follower Damage":             "Follower Type Links",
-		"Gold/Doubloon Drop Increase": "Other Links",
-	}
-
-	if category, exists := categoryMap[linkType]; exists {
-		return category
-	}
-	return "Other Links"
+	// Simplified category mapping - can be expanded if needed
+	// For now, just return a generic category since categories aren't important
+	return "Mastery Links"
 }

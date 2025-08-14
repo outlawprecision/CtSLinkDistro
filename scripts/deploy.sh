@@ -159,12 +159,23 @@ fi
 # Update Lambda function code only
 if [[ "$UPDATE_LAMBDA_ONLY" == "true" ]]; then
     print_info "Building Lambda function..."
-    make lambda-build
+    make build-lambda
     
     if [[ ! -f "bootstrap" ]]; then
         print_error "Lambda binary 'bootstrap' not found. Run 'make lambda-build' first."
         exit 1
     fi
+    
+    # Create and upload new package
+    LAMBDA_ZIP_NAME="flavaflav-lambda-${ENVIRONMENT}.zip"
+    print_info "Creating Lambda deployment package: $LAMBDA_ZIP_NAME"
+    zip -q "$LAMBDA_ZIP_NAME" bootstrap
+    
+    # Upload to S3
+    S3_BUCKET="sherwood-artifacts"
+    S3_KEY="flavaflav/lambda/${LAMBDA_ZIP_NAME}"
+    print_info "Uploading Lambda package to s3://${S3_BUCKET}/${S3_KEY}"
+    aws s3 cp "$LAMBDA_ZIP_NAME" "s3://${S3_BUCKET}/${S3_KEY}" --region "$REGION"
     
     # Get Lambda function name from stack outputs
     LAMBDA_FUNCTION_NAME=$(aws cloudformation describe-stacks \
@@ -180,21 +191,15 @@ if [[ "$UPDATE_LAMBDA_ONLY" == "true" ]]; then
     
     print_info "Updating Lambda function: $LAMBDA_FUNCTION_NAME"
     
-    # Create deployment package
-    if command -v zip &> /dev/null; then
-        zip -q lambda-deployment.zip bootstrap
-        DEPLOYMENT_PACKAGE="lambda-deployment.zip"
-    else
-        tar -czf lambda-deployment.tar.gz bootstrap
-        DEPLOYMENT_PACKAGE="lambda-deployment.tar.gz"
-        print_warning "Using tar.gz instead of zip (zip not available)"
-    fi
-    
-    # Update function code
+    # Update function code from S3
     aws lambda update-function-code \
         --function-name "$LAMBDA_FUNCTION_NAME" \
-        --zip-file "fileb://$DEPLOYMENT_PACKAGE" \
+        --s3-bucket "$S3_BUCKET" \
+        --s3-key "$S3_KEY" \
         --region "$REGION"
+    
+    # Clean up local zip
+    rm -f "$LAMBDA_ZIP_NAME"
     
     print_success "Lambda function updated successfully!"
     exit 0
@@ -217,6 +222,31 @@ else
     WAIT_CONDITION="stack-update-complete"
 fi
 
+# Build Lambda function first
+print_info "Building Lambda function..."
+make lambda-build
+
+if [[ ! -f "bootstrap" ]]; then
+    print_error "Lambda binary 'bootstrap' not found. Build failed."
+    exit 1
+fi
+
+# Create Lambda deployment package
+LAMBDA_ZIP_NAME="flavaflav-lambda-${ENVIRONMENT}.zip"
+print_info "Creating Lambda deployment package: $LAMBDA_ZIP_NAME"
+zip -q "$LAMBDA_ZIP_NAME" bootstrap
+
+# Upload to S3
+S3_BUCKET="sherwood-artifacts"
+S3_KEY="flavaflav/lambda/${LAMBDA_ZIP_NAME}"
+print_info "Uploading Lambda package to s3://${S3_BUCKET}/${S3_KEY}"
+aws s3 cp "$LAMBDA_ZIP_NAME" "s3://${S3_BUCKET}/${S3_KEY}" --region "$REGION"
+
+print_success "Lambda package uploaded successfully!"
+
+# Clean up local zip file
+rm -f "$LAMBDA_ZIP_NAME"
+
 # Validate template
 print_info "Validating CloudFormation template..."
 aws cloudformation validate-template \
@@ -225,15 +255,41 @@ aws cloudformation validate-template \
 
 print_success "Template validation passed!"
 
+# Add Lambda S3 location to parameters
+TEMP_PARAMS_FILE="/tmp/params-with-lambda-$$.json"
+if [[ -f "$PARAMETERS_FILE" ]]; then
+    # Add LambdaCodeBucket and LambdaCodeKey to existing parameters
+    jq '. + [{"ParameterKey": "LambdaCodeBucket", "ParameterValue": "'$S3_BUCKET'"}, {"ParameterKey": "LambdaCodeKey", "ParameterValue": "'$S3_KEY'"}]' "$PARAMETERS_FILE" > "$TEMP_PARAMS_FILE"
+else
+    # Create parameters with Lambda location
+    echo '[
+        {
+            "ParameterKey": "Environment",
+            "ParameterValue": "'$ENVIRONMENT'"
+        },
+        {
+            "ParameterKey": "LambdaCodeBucket",
+            "ParameterValue": "'$S3_BUCKET'"
+        },
+        {
+            "ParameterKey": "LambdaCodeKey",
+            "ParameterValue": "'$S3_KEY'"
+        }
+    ]' > "$TEMP_PARAMS_FILE"
+fi
+
 # Deploy stack
 print_info "Deploying CloudFormation stack..."
 aws cloudformation "$OPERATION" \
     --stack-name "$FULL_STACK_NAME" \
     --template-body "file://$TEMPLATE_FILE" \
-    --parameters "file://$PARAMETERS_FILE" \
+    --parameters "file://$TEMP_PARAMS_FILE" \
     --capabilities CAPABILITY_NAMED_IAM \
     --region "$REGION" \
     --tags Key=Environment,Value="$ENVIRONMENT" Key=Application,Value=FlavaFlav
+
+# Clean up temp file
+rm -f "$TEMP_PARAMS_FILE"
 
 # Wait for completion
 print_info "Waiting for stack operation to complete..."
@@ -252,41 +308,8 @@ OUTPUTS=$(aws cloudformation describe-stacks \
 
 echo "$OUTPUTS" | jq -r '.[] | "\(.OutputKey): \(.OutputValue)"'
 
-# Build and deploy Lambda function
-print_info "Building and deploying Lambda function..."
-make lambda-build
-
-if [[ ! -f "bootstrap" ]]; then
-    print_error "Lambda binary 'bootstrap' not found."
-    exit 1
-fi
-
-# Get Lambda function name from outputs
-LAMBDA_FUNCTION_NAME=$(echo "$OUTPUTS" | jq -r '.[] | select(.OutputKey=="LambdaFunctionName") | .OutputValue')
-
-if [[ -n "$LAMBDA_FUNCTION_NAME" && "$LAMBDA_FUNCTION_NAME" != "null" ]]; then
-    print_info "Updating Lambda function code..."
-    
-    # Create deployment package
-    if command -v zip &> /dev/null; then
-        zip -q lambda-deployment.zip bootstrap
-        DEPLOYMENT_PACKAGE="lambda-deployment.zip"
-    else
-        tar -czf lambda-deployment.tar.gz bootstrap
-        DEPLOYMENT_PACKAGE="lambda-deployment.tar.gz"
-        print_warning "Using tar.gz instead of zip (zip not available)"
-    fi
-    
-    # Update function code
-    aws lambda update-function-code \
-        --function-name "$LAMBDA_FUNCTION_NAME" \
-        --zip-file "fileb://$DEPLOYMENT_PACKAGE" \
-        --region "$REGION" > /dev/null
-    
-    print_success "Lambda function code updated!"
-else
-    print_warning "Could not find Lambda function name in stack outputs"
-fi
+# Lambda is already deployed with correct code from S3
+print_success "Lambda function deployed with code from S3!"
 
 # Get important URLs
 API_URL=$(echo "$OUTPUTS" | jq -r '.[] | select(.OutputKey=="ApiGatewayUrl") | .OutputValue')

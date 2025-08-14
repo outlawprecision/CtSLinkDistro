@@ -18,9 +18,20 @@ Parameters:
     Default: ""
     Description: "SSL Certificate ARN for custom domain (optional)"
 
+  LambdaCodeBucket:
+    Type: String
+    Default: "sherwood-artifacts"
+    Description: "S3 bucket containing Lambda deployment package"
+
+  LambdaCodeKey:
+    Type: String
+    Default: ""
+    Description: "S3 key for Lambda deployment package (auto-generated if not provided)"
+
 Conditions:
   HasCustomDomain: !Not [!Equals [!Ref DomainName, ""]]
   HasCertificate: !Not [!Equals [!Ref CertificateArn, ""]]
+  HasLambdaCodeKey: !Not [!Equals [!Ref LambdaCodeKey, ""]]
 
 Resources:
   # DynamoDB Table for Users/Members
@@ -160,15 +171,11 @@ Resources:
       Runtime: provided.al2
       Handler: bootstrap
       Code:
-        ZipFile: |
-          exports.handler = async (event) => {
-              return {
-                  statusCode: 200,
-                  body: JSON.stringify({
-                      message: 'Lambda function deployed but code needs to be updated via deployment script'
-                  })
-              };
-          };
+        S3Bucket: !Ref LambdaCodeBucket
+        S3Key: !If
+          - HasLambdaCodeKey
+          - !Ref LambdaCodeKey
+          - !Sub "flavaflav/lambda/flavaflav-lambda-${Environment}.zip"
       Role: !GetAtt LambdaExecutionRole.Arn
       Timeout: 30
       MemorySize: 512
@@ -214,6 +221,9 @@ Resources:
     Type: AWS::ApiGateway::Deployment
     DependsOn:
       - ApiProxyMethod
+      - ApiProxyOptionsMethod
+      - ApiRootMethod
+      - ApiRootOptionsMethod
     Properties:
       RestApiId: !Ref FlavaFlavApi
       StageName: !Ref Environment
@@ -238,6 +248,48 @@ Resources:
         Type: AWS_PROXY
         IntegrationHttpMethod: POST
         Uri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${FlavaFlavLambda.Arn}/invocations"
+        IntegrationResponses:
+          - StatusCode: 200
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-Requested-With'"
+              method.response.header.Access-Control-Allow-Methods: "'GET,POST,PUT,DELETE,OPTIONS'"
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+      MethodResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Headers: true
+            method.response.header.Access-Control-Allow-Methods: true
+            method.response.header.Access-Control-Allow-Origin: true
+
+  # API Gateway OPTIONS Method for Proxy (CORS preflight)
+  ApiProxyOptionsMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref FlavaFlavApi
+      ResourceId: !Ref ApiProxyResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        Type: MOCK
+        IntegrationResponses:
+          - StatusCode: 200
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-Requested-With'"
+              method.response.header.Access-Control-Allow-Methods: "'GET,POST,PUT,DELETE,OPTIONS'"
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+            ResponseTemplates:
+              application/json: ""
+        PassthroughBehavior: WHEN_NO_MATCH
+        RequestTemplates:
+          application/json: '{"statusCode": 200}'
+      MethodResponses:
+        - StatusCode: 200
+          ResponseModels:
+            application/json: "Empty"
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Headers: true
+            method.response.header.Access-Control-Allow-Methods: true
+            method.response.header.Access-Control-Allow-Origin: true
 
   # API Gateway Method for Root
   ApiRootMethod:
@@ -251,6 +303,48 @@ Resources:
         Type: AWS_PROXY
         IntegrationHttpMethod: POST
         Uri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${FlavaFlavLambda.Arn}/invocations"
+        IntegrationResponses:
+          - StatusCode: 200
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-Requested-With'"
+              method.response.header.Access-Control-Allow-Methods: "'GET,POST,PUT,DELETE,OPTIONS'"
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+      MethodResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Headers: true
+            method.response.header.Access-Control-Allow-Methods: true
+            method.response.header.Access-Control-Allow-Origin: true
+
+  # API Gateway OPTIONS Method for Root (CORS preflight)
+  ApiRootOptionsMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref FlavaFlavApi
+      ResourceId: !GetAtt FlavaFlavApi.RootResourceId
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        Type: MOCK
+        IntegrationResponses:
+          - StatusCode: 200
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-Requested-With'"
+              method.response.header.Access-Control-Allow-Methods: "'GET,POST,PUT,DELETE,OPTIONS'"
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+            ResponseTemplates:
+              application/json: ""
+        PassthroughBehavior: WHEN_NO_MATCH
+        RequestTemplates:
+          application/json: '{"statusCode": 200}'
+      MethodResponses:
+        - StatusCode: 200
+          ResponseModels:
+            application/json: "Empty"
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Headers: true
+            method.response.header.Access-Control-Allow-Methods: true
+            method.response.header.Access-Control-Allow-Origin: true
 
   # S3 Bucket for Static Files
   StaticFilesBucket:
@@ -306,9 +400,11 @@ Resources:
           - CloudFrontDefaultCertificate: true
         Origins:
           - Id: S3Origin
-            DomainName: !GetAtt StaticFilesBucket.RegionalDomainName
-            S3OriginConfig:
-              OriginAccessIdentity: ""
+            DomainName: !Sub "${StaticFilesBucket}.s3-website-${AWS::Region}.amazonaws.com"
+            CustomOriginConfig:
+              HTTPPort: 80
+              HTTPSPort: 443
+              OriginProtocolPolicy: http-only
           - Id: ApiGatewayOrigin
             DomainName: !Sub "${FlavaFlavApi}.execute-api.${AWS::Region}.amazonaws.com"
             OriginPath: !Sub "/${Environment}"
@@ -333,10 +429,16 @@ Resources:
             TargetOriginId: ApiGatewayOrigin
             ViewerProtocolPolicy: redirect-to-https
             AllowedMethods: [DELETE, GET, HEAD, OPTIONS, PATCH, POST, PUT]
-            CachedMethods: [GET, HEAD]
+            CachedMethods: [GET, HEAD, OPTIONS]
             ForwardedValues:
               QueryString: true
-              Headers: ["*"]
+              Headers:
+                - Authorization
+                - Content-Type
+                - X-Requested-With
+                - Accept
+                - Origin
+                - Referer
               Cookies:
                 Forward: all
             Compress: false

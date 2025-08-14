@@ -455,6 +455,121 @@ function showAddMemberModal() {
 
 function showAddInventoryModal() {
     document.getElementById('add-inventory-modal').style.display = 'block';
+    populateLinkTypeDropdown(); // Populate dropdown when modal opens
+}
+
+// Populate link type dropdown with all available link types
+function populateLinkTypeDropdown() {
+    const linkTypes = [
+        "Aegis Keep Damage",
+        "Alchemy/Healing/Veterinary",
+        "Backstab Damage",
+        "Bard Reset/Break Ignore Chance",
+        "Barding Effect Durations",
+        "Boss Damage Resistance",
+        "Cavernam Damage",
+        "Chance on Stealth for 5 Extra Steps",
+        "Chest Success Chances/Progress",
+        "Chivalry Skill",
+        "Crewmember Damage",
+        "Crewmember Damage Resistance",
+        "Damage Dealt By Player",
+        "Damage on Ships",
+        "Damage Resistance",
+        "Damage Resistance on Ships",
+        "Damage to Barded Creatures",
+        "Damage to Bestial Creatures",
+        "Damage to Bleeding Creatures",
+        "Damage to Bosses",
+        "Damage to Construct Creatures",
+        "Damage to Creatures Above 66% HP",
+        "Damage to Creatures Below 33% HP",
+        "Damage to Daemonic Creatures",
+        "Damage to Diseased Creatures",
+        "Damage to Elemental Creatures",
+        "Damage to Humanoid Creatures",
+        "Damage to Monstrous Creatures",
+        "Damage to Nature Creatures",
+        "Damage to Poisoned Creatures",
+        "Damage to Undead Creatures",
+        "Darkmire Temple Damage",
+        "Effective Alchemy Skill",
+        "Effective Arms Lore",
+        "Effective Barding Skill",
+        "Effective Camping Skill",
+        "Effective Harvest Skill",
+        "Effective Magic Resist Skill",
+        "Effective Parrying Skill",
+        "Effective Poisoning Skill",
+        "Effective Skill on Chests",
+        "Exceptional Quality Chance",
+        "Follower Accuracy/Defense",
+        "Follower Attack Speed",
+        "Follower Damage",
+        "Follower Damage Resistance",
+        "Follower Healing Received",
+        "Gold/Doubloon Drop Increase",
+        "Healing Received",
+        "Inferno Damage",
+        "Kraul Hive Damage",
+        "Mausoleum Damage",
+        "Meditation Rate",
+        "Meditation Rate/Disrupt Avoid Chance",
+        "Melee Accuracy",
+        "Melee Accuracy/Defense",
+        "Melee Aspect Effect Chance",
+        "Melee Aspect Effect Modifier",
+        "Melee Damage",
+        "Melee Damage/Ignore Armor Chance",
+        "Melee Defense",
+        "Melee Ignore Armor Chance",
+        "Melee Special Chance",
+        "Melee Special Chance/Special Damage",
+        "Melee Swing Speed",
+        "Mount Petram Damage",
+        "Necromancy Skill",
+        "Netherzone Damage",
+        "Nusero Damage",
+        "Ossuary Damage",
+        "Physical Damage Resistance",
+        "Poison Damage",
+        "Poison Damage/Resist Ignore",
+        "Pulma Damage",
+        "Rare Loot Chance",
+        "Shadowspire Cathedral Damage",
+        "Ship Cannon Damage",
+        "Special Loot Chance",
+        "Special/Rare Loot Chance",
+        "Spell Aspect Effect Modifier",
+        "Spell Aspect Special Chance",
+        "Spell Charged Chance",
+        "Spell Charged Chance/Charged Damage",
+        "Spell Charged Damage",
+        "Spell Damage",
+        "Spell Damage Resistance",
+        "Spell Damage When No Followers",
+        "Spell Damage/Ignore Resist Chance",
+        "Spell Disrupt Avoid Chance",
+        "Spell Ignore Resist Chance",
+        "Spirit Speak/Inscription",
+        "Summon Duration and Dispel Resist",
+        "Time Dungeon Damage",
+        "Trap Damage",
+        "Wilderness Damage"
+    ];
+
+    const selectElement = document.getElementById('link-type');
+
+    // Clear existing options except the first placeholder
+    selectElement.innerHTML = '<option value="">Select a link type...</option>';
+
+    // Add all link types as options
+    linkTypes.forEach(linkType => {
+        const option = document.createElement('option');
+        option.value = linkType;
+        option.textContent = linkType;
+        selectElement.appendChild(option);
+    });
 }
 
 function closeModal(modalId) {
