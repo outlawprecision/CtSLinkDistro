@@ -1,134 +1,281 @@
-// Global variables
-let currentMembers = [];
-let currentEligibleMembers = [];
-let isSpinning = false;
+// API Base URL - will be set based on environment
+const API_BASE = window.location.origin;
 
-// API base URL - Use configuration from config.js
-const API_BASE = window.FlavaFlavConfig.API_BASE;
+// Global state
+let currentMembers = [];
+let currentInventory = [];
+let wheelSpinning = false;
 
 // Initialize the application
 document.addEventListener('DOMContentLoaded', function () {
-    showTab('dashboard');
-    refreshStatus();
-    loadMembers();
+    loadDashboard();
+    setupEventListeners();
 });
+
+// Event listeners
+function setupEventListeners() {
+    // Add member form
+    document.getElementById('add-member-form').addEventListener('submit', handleAddMember);
+
+    // Add inventory form
+    document.getElementById('add-inventory-form').addEventListener('submit', handleAddInventory);
+
+    // Close modals when clicking outside
+    window.addEventListener('click', function (event) {
+        if (event.target.classList.contains('modal')) {
+            event.target.style.display = 'none';
+        }
+    });
+}
 
 // Tab management
 function showTab(tabName) {
     // Hide all tab contents
-    const tabContents = document.querySelectorAll('.tab-content');
-    tabContents.forEach(tab => tab.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(tab => {
+        tab.classList.remove('active');
+    });
 
     // Remove active class from all tab buttons
-    const tabButtons = document.querySelectorAll('.tab-button');
-    tabButtons.forEach(button => button.classList.remove('active'));
+    document.querySelectorAll('.tab-button').forEach(button => {
+        button.classList.remove('active');
+    });
 
-    // Show selected tab content
+    // Show selected tab
     document.getElementById(tabName).classList.add('active');
-
-    // Add active class to clicked button
     event.target.classList.add('active');
 
-    // Load data for specific tabs
-    if (tabName === 'members') {
-        loadMembers();
-    } else if (tabName === 'wheel') {
-        loadEligibleMembersForWheel();
-    } else if (tabName === 'history') {
-        loadHistory();
-    }
-}
-
-// API helper functions
-async function apiCall(endpoint, options = {}) {
-    showLoading();
-    try {
-        const response = await fetch(`${API_BASE}${endpoint}`, {
-            headers: {
-                'Content-Type': 'application/json',
-                ...options.headers
-            },
-            ...options
-        });
-
-        const data = await response.json();
-
-        if (!data.success) {
-            throw new Error(data.error || 'API call failed');
-        }
-
-        return data.data;
-    } catch (error) {
-        showNotification(error.message, 'error');
-        throw error;
-    } finally {
-        hideLoading();
+    // Load tab-specific data
+    switch (tabName) {
+        case 'dashboard':
+            loadDashboard();
+            break;
+        case 'members':
+            loadMembers();
+            break;
+        case 'inventory':
+            loadInventory();
+            break;
+        case 'picker':
+            loadPickerWheel();
+            break;
+        case 'history':
+            loadHistory();
+            break;
     }
 }
 
 // Dashboard functions
-async function refreshStatus() {
+async function loadDashboard() {
     try {
-        const status = await apiCall('/distribution/status');
-        updateDashboard(status);
+        // Load members for stats
+        const membersResponse = await fetch(`${API_BASE}/api/members`);
+        const membersData = await membersResponse.json();
+
+        if (membersData.success) {
+            const members = membersData.data;
+            const silverEligible = members.filter(m => m.silver_eligible).length;
+            const goldEligible = members.filter(m => m.gold_eligible).length;
+
+            document.getElementById('total-members').textContent = members.length;
+            document.getElementById('silver-eligible').textContent = silverEligible;
+            document.getElementById('gold-eligible').textContent = goldEligible;
+        }
+
+        // Load inventory summary
+        const inventoryResponse = await fetch(`${API_BASE}/api/inventory/summary`);
+        const inventoryData = await inventoryResponse.json();
+
+        if (inventoryData.success) {
+            const summary = inventoryData.data;
+            let totalLinks = 0;
+            let summaryHTML = '<div class="inventory-summary-grid">';
+
+            for (const [linkType, qualities] of Object.entries(summary)) {
+                let linkTotal = 0;
+                let qualityText = '';
+
+                for (const [quality, count] of Object.entries(qualities)) {
+                    linkTotal += count;
+                    totalLinks += count;
+                    const emoji = getQualityEmoji(quality);
+                    qualityText += `${emoji} ${count} `;
+                }
+
+                summaryHTML += `
+                    <div class="summary-item">
+                        <div class="link-type">${linkType}</div>
+                        <div class="link-counts">${qualityText}</div>
+                        <div class="link-total">Total: ${linkTotal}</div>
+                    </div>
+                `;
+            }
+
+            summaryHTML += '</div>';
+            document.getElementById('inventory-summary-content').innerHTML = summaryHTML;
+            document.getElementById('total-links').textContent = totalLinks;
+        }
+
     } catch (error) {
-        console.error('Failed to refresh status:', error);
+        console.error('Error loading dashboard:', error);
     }
 }
 
-function updateDashboard(status) {
-    // Update silver status
-    document.getElementById('silver-eligible').textContent = status.silver.eligible_count;
-    document.getElementById('silver-completed').textContent = status.silver.completed_count;
-    document.getElementById('silver-compensation').textContent = status.silver.compensation_count;
-    document.getElementById('silver-progress').textContent = `${status.silver.completion_percentage.toFixed(1)}%`;
-
-    // Update gold status
-    document.getElementById('gold-eligible').textContent = status.gold.eligible_count;
-    document.getElementById('gold-completed').textContent = status.gold.completed_count;
-    document.getElementById('gold-compensation').textContent = status.gold.compensation_count;
-    document.getElementById('gold-progress').textContent = `${status.gold.completion_percentage.toFixed(1)}%`;
-}
-
-async function updateLists() {
+// Members functions
+async function loadMembers() {
     try {
-        await apiCall('/utility/update-lists', { method: 'POST' });
-        showNotification('Distribution lists updated successfully', 'success');
-        refreshStatus();
+        const response = await fetch(`${API_BASE}/api/members`);
+        const data = await response.json();
+
+        if (data.success) {
+            currentMembers = data.data;
+            displayMembers(currentMembers);
+        } else {
+            document.getElementById('members-list').innerHTML = `<p class="error">Error: ${data.error}</p>`;
+        }
     } catch (error) {
-        console.error('Failed to update lists:', error);
+        console.error('Error loading members:', error);
+        document.getElementById('members-list').innerHTML = '<p class="error">Failed to load members</p>';
     }
 }
 
-async function resetWeekly() {
-    if (!confirm('Are you sure you want to reset weekly participation for all members?')) {
+function displayMembers(members) {
+    const container = document.getElementById('members-list');
+
+    if (members.length === 0) {
+        container.innerHTML = '<p>No members found</p>';
         return;
     }
 
+    const membersHTML = members.map(member => `
+        <div class="member-card">
+            <div class="member-header">
+                <h4>${member.username}</h4>
+                <span class="rank-badge rank-${member.rank.toLowerCase().replace(' ', '-')}">${member.rank}</span>
+            </div>
+            <div class="member-details">
+                <p><strong>Days in Guild:</strong> ${member.days_in_guild}</p>
+                <p><strong>Silver Eligible:</strong> ${member.silver_eligible ? '✅' : '❌'}</p>
+                <p><strong>Gold Eligible:</strong> ${member.gold_eligible ? '✅' : '❌'}</p>
+                <p><strong>Added:</strong> ${new Date(member.added_date).toLocaleDateString()}</p>
+            </div>
+            ${member.is_officer ? '' : `
+                <button class="btn btn-secondary btn-sm" onclick="promoteMember('${member.discord_id}')">
+                    Promote to Maester
+                </button>
+            `}
+        </div>
+    `).join('');
+
+    container.innerHTML = membersHTML;
+}
+
+// Inventory functions
+async function loadInventory() {
     try {
-        await apiCall('/utility/reset-weekly', { method: 'POST' });
-        showNotification('Weekly participation reset successfully', 'success');
-        refreshStatus();
+        const response = await fetch(`${API_BASE}/api/inventory`);
+        const data = await response.json();
+
+        if (data.success) {
+            currentInventory = data.data;
+            displayInventory(currentInventory);
+        } else {
+            document.getElementById('inventory-list').innerHTML = `<p class="error">Error: ${data.error}</p>`;
+        }
     } catch (error) {
-        console.error('Failed to reset weekly participation:', error);
+        console.error('Error loading inventory:', error);
+        document.getElementById('inventory-list').innerHTML = '<p class="error">Failed to load inventory</p>';
     }
 }
 
-// Wheel functions
-async function loadEligibleMembersForWheel() {
-    const linkType = document.querySelector('input[name="linkType"]:checked').value;
+function displayInventory(inventory) {
+    const container = document.getElementById('inventory-list');
+
+    if (inventory.length === 0) {
+        container.innerHTML = '<p>No links in inventory</p>';
+        return;
+    }
+
+    // Group by link type and quality
+    const grouped = {};
+    inventory.forEach(link => {
+        const key = `${link.link_type}_${link.quality}`;
+        if (!grouped[key]) {
+            grouped[key] = {
+                link_type: link.link_type,
+                quality: link.quality,
+                bonus: link.bonus,
+                category: link.category,
+                count: 0
+            };
+        }
+        grouped[key].count++;
+    });
+
+    const inventoryHTML = Object.values(grouped).map(item => `
+        <div class="inventory-card">
+            <div class="inventory-header">
+                <h4>${item.link_type}</h4>
+                <span class="quality-badge quality-${item.quality}">${item.quality.toUpperCase()}</span>
+            </div>
+            <div class="inventory-details">
+                <p><strong>Bonus:</strong> ${item.bonus}</p>
+                <p><strong>Category:</strong> ${item.category}</p>
+                <p><strong>Available:</strong> ${item.count}</p>
+            </div>
+        </div>
+    `).join('');
+
+    container.innerHTML = inventoryHTML;
+}
+
+// Picker wheel functions
+async function loadPickerWheel() {
+    drawWheel([]);
+}
+
+async function spinWheel() {
+    if (wheelSpinning) return;
+
+    const quality = document.getElementById('picker-quality').value;
+
     try {
-        currentEligibleMembers = await apiCall(`/distribution/eligible?type=${linkType}&active_only=true`);
-        drawWheel();
+        // Get eligible members
+        const response = await fetch(`${API_BASE}/api/distribution/eligible?quality=${quality}`);
+        const data = await response.json();
+
+        if (!data.success) {
+            alert(`Error: ${data.error}`);
+            return;
+        }
+
+        const eligibleMembers = data.data;
+
+        if (eligibleMembers.length === 0) {
+            alert(`No members eligible for ${quality} links`);
+            return;
+        }
+
+        // Pick random winner
+        const winnerResponse = await fetch(`${API_BASE}/api/distribution/pick-winner?list_id=temp`, {
+            method: 'POST'
+        });
+        const winnerData = await winnerResponse.json();
+
+        if (winnerData.success) {
+            const winner = winnerData.data.winner;
+            animateWheel(eligibleMembers, winner);
+        } else {
+            alert(`Error picking winner: ${winnerData.error}`);
+        }
+
     } catch (error) {
-        console.error('Failed to load eligible members:', error);
-        currentEligibleMembers = [];
-        drawWheel();
+        console.error('Error spinning wheel:', error);
+        alert('Failed to spin wheel');
     }
 }
 
-function drawWheel() {
-    const canvas = document.getElementById('wheelCanvas');
+function drawWheel(members) {
+    const canvas = document.getElementById('wheel');
     const ctx = canvas.getContext('2d');
     const centerX = canvas.width / 2;
     const centerY = canvas.height / 2;
@@ -137,38 +284,37 @@ function drawWheel() {
     // Clear canvas
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    if (currentEligibleMembers.length === 0) {
+    if (members.length === 0) {
         // Draw empty wheel
         ctx.beginPath();
         ctx.arc(centerX, centerY, radius, 0, 2 * Math.PI);
         ctx.fillStyle = '#f0f0f0';
         ctx.fill();
         ctx.strokeStyle = '#ccc';
-        ctx.lineWidth = 3;
+        ctx.lineWidth = 2;
         ctx.stroke();
 
-        // Draw "No eligible members" text
         ctx.fillStyle = '#666';
-        ctx.font = '20px Arial';
+        ctx.font = '16px Arial';
         ctx.textAlign = 'center';
-        ctx.fillText('No Eligible Members', centerX, centerY);
+        ctx.fillText('Select quality and spin!', centerX, centerY);
         return;
     }
 
-    const anglePerSegment = (2 * Math.PI) / currentEligibleMembers.length;
-    const colors = generateColors(currentEligibleMembers.length);
+    const anglePerSegment = (2 * Math.PI) / members.length;
+    const colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7', '#DDA0DD', '#98D8C8', '#F7DC6F'];
 
     // Draw segments
-    for (let i = 0; i < currentEligibleMembers.length; i++) {
-        const startAngle = i * anglePerSegment - Math.PI / 2;
-        const endAngle = (i + 1) * anglePerSegment - Math.PI / 2;
+    members.forEach((member, index) => {
+        const startAngle = index * anglePerSegment;
+        const endAngle = startAngle + anglePerSegment;
 
-        // Draw segment
         ctx.beginPath();
         ctx.moveTo(centerX, centerY);
         ctx.arc(centerX, centerY, radius, startAngle, endAngle);
         ctx.closePath();
-        ctx.fillStyle = colors[i];
+
+        ctx.fillStyle = colors[index % colors.length];
         ctx.fill();
         ctx.strokeStyle = '#fff';
         ctx.lineWidth = 2;
@@ -182,235 +328,241 @@ function drawWheel() {
         ctx.save();
         ctx.translate(textX, textY);
         ctx.rotate(textAngle + Math.PI / 2);
-        ctx.fillStyle = '#333';
+        ctx.fillStyle = '#000';
         ctx.font = '12px Arial';
         ctx.textAlign = 'center';
-        ctx.fillText(currentEligibleMembers[i].discord_username, 0, 0);
+        ctx.fillText(member.username, 0, 0);
         ctx.restore();
-    }
+    });
+
+    // Draw center circle
+    ctx.beginPath();
+    ctx.arc(centerX, centerY, 20, 0, 2 * Math.PI);
+    ctx.fillStyle = '#333';
+    ctx.fill();
 }
 
-function generateColors(count) {
-    const colors = [];
-    for (let i = 0; i < count; i++) {
-        const hue = (i * 360 / count) % 360;
-        colors.push(`hsl(${hue}, 70%, 80%)`);
+function animateWheel(members, winner) {
+    wheelSpinning = true;
+    const canvas = document.getElementById('wheel');
+    const ctx = canvas.getContext('2d');
+
+    // Find winner index
+    const winnerIndex = members.findIndex(m => m.discord_id === winner.discord_id);
+    const anglePerSegment = (2 * Math.PI) / members.length;
+    const targetAngle = winnerIndex * anglePerSegment + anglePerSegment / 2;
+
+    let currentAngle = 0;
+    const spinDuration = 3000; // 3 seconds
+    const startTime = Date.now();
+    const totalRotation = Math.PI * 8 + targetAngle; // Multiple spins + target
+
+    function animate() {
+        const elapsed = Date.now() - startTime;
+        const progress = Math.min(elapsed / spinDuration, 1);
+
+        // Easing function for smooth deceleration
+        const easeOut = 1 - Math.pow(1 - progress, 3);
+        currentAngle = totalRotation * easeOut;
+
+        // Redraw wheel with rotation
+        ctx.save();
+        ctx.translate(canvas.width / 2, canvas.height / 2);
+        ctx.rotate(-currentAngle);
+        ctx.translate(-canvas.width / 2, -canvas.height / 2);
+
+        drawWheel(members);
+
+        ctx.restore();
+
+        if (progress < 1) {
+            requestAnimationFrame(animate);
+        } else {
+            // Show winner
+            showWinner(winner);
+            wheelSpinning = false;
+        }
     }
-    return colors;
+
+    animate();
 }
 
-async function spinWheel() {
-    if (isSpinning) return;
-    if (currentEligibleMembers.length === 0) {
-        showNotification('No eligible members available', 'warning');
-        return;
-    }
+function showWinner(winner) {
+    const resultDiv = document.getElementById('winner-result');
+    const infoDiv = document.getElementById('winner-info');
 
-    isSpinning = true;
-    const spinButton = document.getElementById('spin-button');
-    const canvas = document.getElementById('wheelCanvas');
-    const winnerDisplay = document.getElementById('winner-display');
-
-    spinButton.disabled = true;
-    spinButton.textContent = 'SPINNING...';
-    winnerDisplay.style.display = 'none';
-
-    // Add spinning animation
-    canvas.classList.add('wheel-spinning');
-
-    try {
-        const linkType = document.querySelector('input[name="linkType"]:checked').value;
-        const result = await apiCall(`/distribution/spin?type=${linkType}`, { method: 'POST' });
-
-        // Wait for animation to complete
-        setTimeout(() => {
-            displayWinner(result);
-            canvas.classList.remove('wheel-spinning');
-            refreshStatus();
-            loadEligibleMembersForWheel(); // Reload wheel with updated members
-        }, 3000);
-
-    } catch (error) {
-        canvas.classList.remove('wheel-spinning');
-        console.error('Failed to spin wheel:', error);
-    } finally {
-        setTimeout(() => {
-            isSpinning = false;
-            spinButton.disabled = false;
-            spinButton.textContent = '🎯 SPIN THE WHEEL';
-        }, 3000);
-    }
-}
-
-function displayWinner(result) {
-    const winnerDisplay = document.getElementById('winner-display');
-    const winnerInfo = document.getElementById('winner-info');
-
-    const compensationText = result.is_compensation ? ' (Compensation)' : '';
-    const linkTypeText = result.link_history.link_type.charAt(0).toUpperCase() + result.link_history.link_type.slice(1);
-
-    winnerInfo.innerHTML = `
+    infoDiv.innerHTML = `
         <div class="winner-card">
-            <h4>${result.winner.discord_username}${compensationText}</h4>
-            <p><strong>Link Type:</strong> ${linkTypeText}</p>
-            <p><strong>Date:</strong> ${new Date(result.link_history.date_received).toLocaleDateString()}</p>
-            <p><strong>Days in Guild:</strong> ${Math.floor((new Date() - new Date(result.winner.guild_join_date)) / (1000 * 60 * 60 * 24))}</p>
-            ${result.winner.character_names.length > 0 ? `<p><strong>Characters:</strong> ${result.winner.character_names.join(', ')}</p>` : ''}
+            <h4>${winner.username}</h4>
+            <p><strong>Rank:</strong> ${winner.rank}</p>
+            <p><strong>Days in Guild:</strong> ${winner.days_in_guild}</p>
         </div>
     `;
 
-    winnerDisplay.style.display = 'block';
-    showNotification(`${result.winner.discord_username} won a ${linkTypeText} link!`, 'success');
-}
-
-// Update wheel when link type changes
-document.addEventListener('change', function (e) {
-    if (e.target.name === 'linkType') {
-        loadEligibleMembersForWheel();
-    }
-});
-
-// Members functions
-async function loadMembers() {
-    try {
-        currentMembers = await apiCall('/members');
-        displayMembers(currentMembers);
-    } catch (error) {
-        console.error('Failed to load members:', error);
-        currentMembers = [];
-        displayMembers([]);
-    }
-}
-
-function displayMembers(members) {
-    const membersList = document.getElementById('members-list');
-
-    if (members.length === 0) {
-        membersList.innerHTML = '<p>No members found.</p>';
-        return;
-    }
-
-    membersList.innerHTML = members.map(member => `
-        <div class="member-card">
-            <div class="member-header">
-                <div class="member-name">${member.discord_username}</div>
-                <div class="member-role role-${member.role}">${member.role}</div>
-            </div>
-            <div class="member-details">
-                <div class="member-detail">
-                    <span class="detail-label">Discord ID:</span>
-                    <span>${member.discord_id}</span>
-                </div>
-                <div class="member-detail">
-                    <span class="detail-label">Guild Join Date:</span>
-                    <span>${new Date(member.guild_join_date).toLocaleDateString()}</span>
-                </div>
-                <div class="member-detail">
-                    <span class="detail-label">Days in Guild:</span>
-                    <span>${Math.floor((new Date() - new Date(member.guild_join_date)) / (1000 * 60 * 60 * 24))}</span>
-                </div>
-                <div class="member-detail">
-                    <span class="detail-label">Weekly Boss:</span>
-                    <span>${member.weekly_boss_participation ? '✅' : '❌'}</span>
-                </div>
-                <div class="member-detail">
-                    <span class="detail-label">Omni Absences:</span>
-                    <span>${member.omni_absence_count}</span>
-                </div>
-                <div class="member-detail">
-                    <span class="detail-label">Characters:</span>
-                    <span>${member.character_names.join(', ') || 'None'}</span>
-                </div>
-            </div>
-        </div>
-    `).join('');
-}
-
-function filterMembers() {
-    const searchTerm = document.getElementById('member-search').value.toLowerCase();
-    const filteredMembers = currentMembers.filter(member =>
-        member.discord_username.toLowerCase().includes(searchTerm) ||
-        member.character_names.some(name => name.toLowerCase().includes(searchTerm))
-    );
-    displayMembers(filteredMembers);
-}
-
-function showAddMemberForm() {
-    document.getElementById('add-member-form').style.display = 'block';
-}
-
-function hideAddMemberForm() {
-    document.getElementById('add-member-form').style.display = 'none';
-    // Reset form
-    document.querySelector('#add-member-form form').reset();
-}
-
-async function addMember(event) {
-    event.preventDefault();
-
-    const formData = new FormData(event.target);
-    const characterNames = formData.get('character-names')
-        ? formData.get('character-names').split(',').map(name => name.trim()).filter(name => name)
-        : [];
-
-    const memberData = {
-        discord_id: document.getElementById('discord-id').value,
-        discord_username: document.getElementById('discord-username').value,
-        character_names: characterNames,
-        guild_join_date: new Date(document.getElementById('guild-join-date').value).toISOString(),
-        role: document.getElementById('role').value
-    };
-
-    try {
-        await apiCall('/member/create', {
-            method: 'POST',
-            body: JSON.stringify(memberData)
-        });
-
-        showNotification('Member added successfully', 'success');
-        hideAddMemberForm();
-        loadMembers();
-        refreshStatus();
-    } catch (error) {
-        console.error('Failed to add member:', error);
-    }
+    resultDiv.style.display = 'block';
 }
 
 // History functions
 async function loadHistory() {
-    // This would need to be implemented with a proper history endpoint
-    // For now, show a placeholder
-    const historyList = document.getElementById('history-list');
-    historyList.innerHTML = '<p>History functionality will be implemented with proper backend support.</p>';
+    try {
+        const response = await fetch(`${API_BASE}/api/distribution/history`);
+        const data = await response.json();
+
+        if (data.success) {
+            displayHistory(data.data);
+        } else {
+            document.getElementById('history-list').innerHTML = `<p class="error">Error: ${data.error}</p>`;
+        }
+    } catch (error) {
+        console.error('Error loading history:', error);
+        document.getElementById('history-list').innerHTML = '<p class="error">Failed to load history</p>';
+    }
+}
+
+function displayHistory(history) {
+    const container = document.getElementById('history-list');
+
+    if (history.length === 0) {
+        container.innerHTML = '<p>No distribution history found</p>';
+        return;
+    }
+
+    // Sort by date (newest first)
+    history.sort((a, b) => new Date(b.distributed_at) - new Date(a.distributed_at));
+
+    const historyHTML = history.map(item => `
+        <div class="history-item">
+            <div class="history-header">
+                <h4>${item.member_username}</h4>
+                <span class="quality-badge quality-${item.quality}">${item.quality.toUpperCase()}</span>
+            </div>
+            <div class="history-details">
+                <p><strong>Link:</strong> ${item.link_type} (${item.bonus})</p>
+                <p><strong>Date:</strong> ${new Date(item.distributed_at).toLocaleString()}</p>
+                <p><strong>Method:</strong> ${item.method}</p>
+                <p><strong>Distributed by:</strong> ${item.distributed_by}</p>
+            </div>
+        </div>
+    `).join('');
+
+    container.innerHTML = historyHTML;
+}
+
+// Modal functions
+function showAddMemberModal() {
+    document.getElementById('add-member-modal').style.display = 'block';
+}
+
+function showAddInventoryModal() {
+    document.getElementById('add-inventory-modal').style.display = 'block';
+}
+
+function closeModal(modalId) {
+    document.getElementById(modalId).style.display = 'none';
+}
+
+// Form handlers
+async function handleAddMember(event) {
+    event.preventDefault();
+
+    const formData = {
+        discord_id: document.getElementById('discord-id').value,
+        username: document.getElementById('username').value,
+        join_date: document.getElementById('join-date').value + 'T00:00:00Z'
+    };
+
+    try {
+        const response = await fetch(`${API_BASE}/api/member/create`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(formData)
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            alert('Member added successfully!');
+            closeModal('add-member-modal');
+            document.getElementById('add-member-form').reset();
+            loadMembers(); // Refresh members list
+            loadDashboard(); // Refresh dashboard stats
+        } else {
+            alert(`Error: ${data.error}`);
+        }
+    } catch (error) {
+        console.error('Error adding member:', error);
+        alert('Failed to add member');
+    }
+}
+
+async function handleAddInventory(event) {
+    event.preventDefault();
+
+    const formData = {
+        link_type: document.getElementById('link-type').value,
+        quality: document.getElementById('quality').value,
+        count: parseInt(document.getElementById('count').value)
+    };
+
+    try {
+        const response = await fetch(`${API_BASE}/api/inventory/add`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(formData)
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            alert(`Added ${formData.count} ${formData.quality} ${formData.link_type} links!`);
+            closeModal('add-inventory-modal');
+            document.getElementById('add-inventory-form').reset();
+            loadInventory(); // Refresh inventory list
+            loadDashboard(); // Refresh dashboard stats
+        } else {
+            alert(`Error: ${data.error}`);
+        }
+    } catch (error) {
+        console.error('Error adding inventory:', error);
+        alert('Failed to add inventory');
+    }
+}
+
+// Member actions
+async function promoteMember(discordId) {
+    if (!confirm('Are you sure you want to promote this member to Maester?')) {
+        return;
+    }
+
+    try {
+        const response = await fetch(`${API_BASE}/api/member/promote?discord_id=${discordId}`, {
+            method: 'POST'
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            alert('Member promoted successfully!');
+            loadMembers(); // Refresh members list
+        } else {
+            alert(`Error: ${data.error}`);
+        }
+    } catch (error) {
+        console.error('Error promoting member:', error);
+        alert('Failed to promote member');
+    }
 }
 
 // Utility functions
-function showLoading() {
-    document.getElementById('loading').style.display = 'flex';
+function getQualityEmoji(quality) {
+    switch (quality) {
+        case 'bronze': return '🥉';
+        case 'silver': return '🥈';
+        case 'gold': return '🥇';
+        default: return '⚪';
+    }
 }
-
-function hideLoading() {
-    document.getElementById('loading').style.display = 'none';
-}
-
-function showNotification(message, type = 'success') {
-    const notification = document.getElementById('notification');
-    notification.textContent = message;
-    notification.className = `notification ${type}`;
-    notification.style.display = 'block';
-
-    setTimeout(() => {
-        notification.style.display = 'none';
-    }, 5000);
-}
-
-// Error handling for uncaught errors
-window.addEventListener('error', function (e) {
-    console.error('Uncaught error:', e.error);
-    showNotification('An unexpected error occurred', 'error');
-});
-
-window.addEventListener('unhandledrejection', function (e) {
-    console.error('Unhandled promise rejection:', e.reason);
-    showNotification('An unexpected error occurred', 'error');
-});

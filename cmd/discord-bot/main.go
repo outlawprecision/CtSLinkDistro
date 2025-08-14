@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"math/rand"
 	"os"
 	"os/signal"
 	"strconv"
@@ -11,129 +12,196 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/bwmarrin/discordgo"
-
-	"flavaflav/internal/database"
+	"flavaflav/internal/db"
 	"flavaflav/internal/models"
-	"flavaflav/internal/services"
+
+	"github.com/bwmarrin/discordgo"
 )
 
-type Bot struct {
-	session             *discordgo.Session
-	memberService       *services.MemberService
-	distributionService *services.DistributionService
-	config              *models.Config
+var (
+	dbClient *db.DynamoDBClient
+	guildID  string
+)
+
+func init() {
+	// Get configuration from environment variables
+	tableName := os.Getenv("DYNAMODB_TABLE")
+	if tableName == "" {
+		tableName = "flavaflav-dev"
+	}
+
+	guildID = os.Getenv("DISCORD_GUILD_ID")
+	if guildID == "" {
+		log.Fatal("DISCORD_GUILD_ID environment variable is required")
+	}
+
+	// Initialize DynamoDB client
+	var err error
+	dbClient, err = db.NewDynamoDBClient(tableName)
+	if err != nil {
+		log.Fatalf("Failed to initialize DynamoDB client: %v", err)
+	}
 }
 
 func main() {
-	// Load configuration
-	config := models.DefaultConfig()
-
-	// Override with environment variables
-	if token := os.Getenv("DISCORD_BOT_TOKEN"); token != "" {
-		config.Discord.BotToken = token
-	}
-	if guildID := os.Getenv("DISCORD_GUILD_ID"); guildID != "" {
-		config.Discord.GuildID = guildID
-	}
-	if channelID := os.Getenv("DISCORD_CHANNEL_ID"); channelID != "" {
-		config.Discord.ChannelID = channelID
-	}
-	if region := os.Getenv("AWS_REGION"); region != "" {
-		config.AWS.Region = region
-	}
-	if table := os.Getenv("DYNAMODB_TABLE"); table != "" {
-		config.AWS.DynamoDBTable = table
-	}
-
-	if config.Discord.BotToken == "" {
+	token := os.Getenv("DISCORD_BOT_TOKEN")
+	if token == "" {
 		log.Fatal("DISCORD_BOT_TOKEN environment variable is required")
 	}
 
-	// Get inventory table name
-	inventoryTableName := os.Getenv("DYNAMODB_INVENTORY_TABLE")
-	if inventoryTableName == "" {
-		inventoryTableName = "flavaflav-inventory-dev" // Default fallback
-	}
-
-	// Initialize database
-	db, err := database.NewDynamoDBService(config.AWS.Region, config.AWS.DynamoDBTable, inventoryTableName)
-	if err != nil {
-		log.Fatalf("Failed to initialize database: %v", err)
-	}
-
-	// Initialize services
-	memberService := services.NewMemberService(db, config)
-	distributionService := services.NewDistributionService(db, memberService, config)
-
-	// Initialize distribution lists
-	ctx := context.Background()
-	err = distributionService.InitializeDistributionLists(ctx)
-	if err != nil {
-		log.Printf("Warning: Failed to initialize distribution lists: %v", err)
-	}
-
 	// Create Discord session
-	session, err := discordgo.New("Bot " + config.Discord.BotToken)
+	dg, err := discordgo.New("Bot " + token)
 	if err != nil {
-		log.Fatalf("Failed to create Discord session: %v", err)
+		log.Fatalf("Error creating Discord session: %v", err)
 	}
-
-	bot := &Bot{
-		session:             session,
-		memberService:       memberService,
-		distributionService: distributionService,
-		config:              config,
-	}
-
-	// Register event handlers
-	session.AddHandler(bot.ready)
-	session.AddHandler(bot.messageCreate)
-	session.AddHandler(bot.interactionCreate)
-
-	// Set intents
-	session.Identify.Intents = discordgo.IntentsGuildMessages | discordgo.IntentsMessageContent
-
-	// Open connection
-	err = session.Open()
-	if err != nil {
-		log.Fatalf("Failed to open Discord session: %v", err)
-	}
-	defer session.Close()
 
 	// Register slash commands
-	err = bot.registerCommands()
-	if err != nil {
-		log.Printf("Failed to register commands: %v", err)
-	}
+	dg.AddHandler(func(s *discordgo.Session, r *discordgo.Ready) {
+		log.Printf("Logged in as: %v#%v", s.State.User.Username, s.State.User.Discriminator)
+		registerCommands(s)
+	})
 
-	log.Println("FlavaFlav Discord bot is running. Press CTRL+C to exit.")
+	// Register interaction handler
+	dg.AddHandler(interactionHandler)
+
+	// Open connection
+	err = dg.Open()
+	if err != nil {
+		log.Fatalf("Error opening connection: %v", err)
+	}
 
 	// Wait for interrupt signal
-	stop := make(chan os.Signal, 1)
-	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
-	<-stop
+	fmt.Println("Bot is now running. Press CTRL-C to exit.")
+	sc := make(chan os.Signal, 1)
+	signal.Notify(sc, syscall.SIGINT, syscall.SIGTERM, os.Interrupt)
+	<-sc
 
-	log.Println("Shutting down Discord bot...")
+	// Clean up
+	dg.Close()
 }
 
-func (b *Bot) ready(s *discordgo.Session, event *discordgo.Ready) {
-	log.Printf("Bot is ready! Logged in as: %v#%v", s.State.User.Username, s.State.User.Discriminator)
+// Discord slash commands
+var commands = []*discordgo.ApplicationCommand{
+	{
+		Name:        "my-status",
+		Description: "Check your rank, eligibility, and distribution history",
+	},
+	{
+		Name:        "inventory",
+		Description: "View current mastery link inventory",
+		Options: []*discordgo.ApplicationCommandOption{
+			{
+				Type:        discordgo.ApplicationCommandOptionString,
+				Name:        "quality",
+				Description: "Filter by quality (bronze, silver, gold)",
+				Required:    false,
+				Choices: []*discordgo.ApplicationCommandOptionChoice{
+					{Name: "Bronze", Value: "bronze"},
+					{Name: "Silver", Value: "silver"},
+					{Name: "Gold", Value: "gold"},
+				},
+			},
+		},
+	},
+	{
+		Name:        "check-rank",
+		Description: "Check a member's rank and eligibility",
+		Options: []*discordgo.ApplicationCommandOption{
+			{
+				Type:        discordgo.ApplicationCommandOptionUser,
+				Name:        "member",
+				Description: "The member to check",
+				Required:    true,
+			},
+		},
+	},
+	{
+		Name:        "add-member",
+		Description: "Add a new guild member (Maester only)",
+		Options: []*discordgo.ApplicationCommandOption{
+			{
+				Type:        discordgo.ApplicationCommandOptionUser,
+				Name:        "member",
+				Description: "The Discord user to add",
+				Required:    true,
+			},
+			{
+				Type:        discordgo.ApplicationCommandOptionString,
+				Name:        "join_date",
+				Description: "Guild join date (YYYY-MM-DD)",
+				Required:    true,
+			},
+		},
+	},
+	{
+		Name:        "promote-officer",
+		Description: "Promote a member to Maester (Maester only)",
+		Options: []*discordgo.ApplicationCommandOption{
+			{
+				Type:        discordgo.ApplicationCommandOptionUser,
+				Name:        "member",
+				Description: "The member to promote",
+				Required:    true,
+			},
+		},
+	},
+	{
+		Name:        "add-inventory",
+		Description: "Add mastery links to inventory (Maester only)",
+		Options: []*discordgo.ApplicationCommandOption{
+			{
+				Type:        discordgo.ApplicationCommandOptionString,
+				Name:        "link_type",
+				Description: "Type of mastery link",
+				Required:    true,
+			},
+			{
+				Type:        discordgo.ApplicationCommandOptionString,
+				Name:        "quality",
+				Description: "Quality of the link",
+				Required:    true,
+				Choices: []*discordgo.ApplicationCommandOptionChoice{
+					{Name: "Bronze", Value: "bronze"},
+					{Name: "Silver", Value: "silver"},
+					{Name: "Gold", Value: "gold"},
+				},
+			},
+			{
+				Type:        discordgo.ApplicationCommandOptionInteger,
+				Name:        "count",
+				Description: "Number of links to add",
+				Required:    true,
+			},
+		},
+	},
+	{
+		Name:        "pick-winner",
+		Description: "Pick a random winner from eligible members (Maester only)",
+		Options: []*discordgo.ApplicationCommandOption{
+			{
+				Type:        discordgo.ApplicationCommandOptionString,
+				Name:        "quality",
+				Description: "Quality of links to distribute",
+				Required:    true,
+				Choices: []*discordgo.ApplicationCommandOptionChoice{
+					{Name: "Silver", Value: "silver"},
+					{Name: "Gold", Value: "gold"},
+				},
+			},
+		},
+	},
 }
 
-func (b *Bot) messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
-	// Ignore messages from the bot itself
-	if m.Author.ID == s.State.User.ID {
-		return
+func registerCommands(s *discordgo.Session) {
+	for _, cmd := range commands {
+		_, err := s.ApplicationCommandCreate(s.State.User.ID, guildID, cmd)
+		if err != nil {
+			log.Printf("Cannot create '%v' command: %v", cmd.Name, err)
+		}
 	}
-
-	// Handle legacy text commands (optional)
-	if strings.HasPrefix(m.Content, "!flava") {
-		s.ChannelMessageSend(m.ChannelID, "Please use slash commands instead! Try `/help` to see available commands.")
-	}
 }
 
-func (b *Bot) interactionCreate(s *discordgo.Session, i *discordgo.InteractionCreate) {
+func interactionHandler(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	if i.ApplicationCommandData().Name == "" {
 		return
 	}
@@ -141,186 +209,334 @@ func (b *Bot) interactionCreate(s *discordgo.Session, i *discordgo.InteractionCr
 	ctx := context.Background()
 
 	switch i.ApplicationCommandData().Name {
+	case "my-status":
+		handleMyStatus(ctx, s, i)
+	case "inventory":
+		handleInventory(ctx, s, i)
+	case "check-rank":
+		handleCheckRank(ctx, s, i)
 	case "add-member":
-		b.handleAddMember(ctx, s, i)
-	case "check-status":
-		b.handleCheckStatus(ctx, s, i)
-	case "current-lists":
-		b.handleCurrentLists(ctx, s, i)
-	case "mark-participation":
-		b.handleMarkParticipation(ctx, s, i)
-	case "spin-wheel":
-		b.handleSpinWheel(ctx, s, i)
-	case "help":
-		b.handleHelp(ctx, s, i)
+		handleAddMember(ctx, s, i)
+	case "promote-officer":
+		handlePromoteOfficer(ctx, s, i)
+	case "add-inventory":
+		handleAddInventory(ctx, s, i)
+	case "pick-winner":
+		handlePickWinner(ctx, s, i)
 	}
 }
 
-func (b *Bot) registerCommands() error {
-	commands := []*discordgo.ApplicationCommand{
-		{
-			Name:        "add-member",
-			Description: "Add a new guild member",
-			Options: []*discordgo.ApplicationCommandOption{
-				{
-					Type:        discordgo.ApplicationCommandOptionUser,
-					Name:        "user",
-					Description: "Discord user to add",
-					Required:    true,
-				},
-				{
-					Type:        discordgo.ApplicationCommandOptionString,
-					Name:        "join-date",
-					Description: "Guild join date (YYYY-MM-DD)",
-					Required:    true,
-				},
-				{
-					Type:        discordgo.ApplicationCommandOptionString,
-					Name:        "characters",
-					Description: "Character names (comma separated)",
-					Required:    false,
-				},
-				{
-					Type:        discordgo.ApplicationCommandOptionString,
-					Name:        "role",
-					Description: "Member role",
-					Required:    false,
-					Choices: []*discordgo.ApplicationCommandOptionChoice{
-						{Name: "User", Value: "user"},
-						{Name: "Officer", Value: "officer"},
-						{Name: "Admin", Value: "admin"},
-					},
-				},
-			},
-		},
-		{
-			Name:        "check-status",
-			Description: "Check member eligibility status",
-			Options: []*discordgo.ApplicationCommandOption{
-				{
-					Type:        discordgo.ApplicationCommandOptionUser,
-					Name:        "user",
-					Description: "Discord user to check",
-					Required:    false,
-				},
-			},
-		},
-		{
-			Name:        "current-lists",
-			Description: "Show current distribution lists status",
-		},
-		{
-			Name:        "mark-participation",
-			Description: "Mark weekly boss participation",
-			Options: []*discordgo.ApplicationCommandOption{
-				{
-					Type:        discordgo.ApplicationCommandOptionUser,
-					Name:        "user",
-					Description: "Discord user",
-					Required:    true,
-				},
-				{
-					Type:        discordgo.ApplicationCommandOptionBoolean,
-					Name:        "participated",
-					Description: "Did they participate?",
-					Required:    true,
-				},
-			},
-		},
-		{
-			Name:        "spin-wheel",
-			Description: "Spin the wheel for link distribution (Admin only)",
-			Options: []*discordgo.ApplicationCommandOption{
-				{
-					Type:        discordgo.ApplicationCommandOptionString,
-					Name:        "type",
-					Description: "Link type",
-					Required:    true,
-					Choices: []*discordgo.ApplicationCommandOptionChoice{
-						{Name: "Silver", Value: "silver"},
-						{Name: "Gold", Value: "gold"},
-					},
-				},
-			},
-		},
-		{
-			Name:        "help",
-			Description: "Show available commands",
-		},
+func handleMyStatus(ctx context.Context, s *discordgo.Session, i *discordgo.InteractionCreate) {
+	userID := i.Member.User.ID
+
+	member, err := dbClient.GetMember(ctx, userID)
+	if err != nil {
+		respondError(s, i, "You are not registered as a guild member. Contact a Maester to be added.")
+		return
 	}
 
-	for _, command := range commands {
-		_, err := b.session.ApplicationCommandCreate(b.session.State.User.ID, b.config.Discord.GuildID, command)
-		if err != nil {
-			return fmt.Errorf("failed to create command %s: %v", command.Name, err)
+	member.UpdateRankAndEligibility()
+
+	embed := &discordgo.MessageEmbed{
+		Title: fmt.Sprintf("Status for %s", member.Username),
+		Color: getRankColor(member.Rank),
+		Fields: []*discordgo.MessageEmbedField{
+			{Name: "Rank", Value: member.Rank, Inline: true},
+			{Name: "Days in Guild", Value: strconv.Itoa(member.DaysInGuild), Inline: true},
+			{Name: "Silver Eligible", Value: boolToEmoji(member.SilverEligible), Inline: true},
+			{Name: "Gold Eligible", Value: boolToEmoji(member.GoldEligible), Inline: true},
+		},
+		Timestamp: time.Now().Format(time.RFC3339),
+	}
+
+	// Get distribution history
+	distributions, err := dbClient.GetDistributionsByMember(ctx, userID)
+	if err == nil && len(distributions) > 0 {
+		historyText := fmt.Sprintf("Total distributions: %d\n", len(distributions))
+		if len(distributions) <= 5 {
+			for _, dist := range distributions {
+				historyText += fmt.Sprintf("• %s (%s)\n", dist.GetDisplayName(), dist.DistributedAt.Format("Jan 2"))
+			}
+		} else {
+			for i := 0; i < 3; i++ {
+				dist := distributions[i]
+				historyText += fmt.Sprintf("• %s (%s)\n", dist.GetDisplayName(), dist.DistributedAt.Format("Jan 2"))
+			}
+			historyText += fmt.Sprintf("... and %d more", len(distributions)-3)
 		}
+		embed.Fields = append(embed.Fields, &discordgo.MessageEmbedField{
+			Name:  "Recent Distributions",
+			Value: historyText,
+		})
 	}
 
-	return nil
+	s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionResponseChannelMessageWithSource,
+		Data: &discordgo.InteractionResponseData{
+			Embeds: []*discordgo.MessageEmbed{embed},
+		},
+	})
 }
 
-func (b *Bot) handleAddMember(ctx context.Context, s *discordgo.Session, i *discordgo.InteractionCreate) {
+func handleInventory(ctx context.Context, s *discordgo.Session, i *discordgo.InteractionCreate) {
 	options := i.ApplicationCommandData().Options
+	var quality string
+	if len(options) > 0 {
+		quality = options[0].StringValue()
+	}
 
-	user := options[0].UserValue(s)
+	var links []*models.InventoryLink
+	var err error
+
+	if quality != "" {
+		links, err = dbClient.GetAvailableInventoryLinksByQuality(ctx, quality)
+	} else {
+		links, err = dbClient.GetAvailableInventoryLinks(ctx)
+	}
+
+	if err != nil {
+		respondError(s, i, "Failed to get inventory")
+		return
+	}
+
+	// Group by link type and quality
+	summary := make(map[string]map[string]int)
+	for _, link := range links {
+		if summary[link.LinkType] == nil {
+			summary[link.LinkType] = make(map[string]int)
+		}
+		summary[link.LinkType][link.Quality]++
+	}
+
+	embed := &discordgo.MessageEmbed{
+		Title: "Mastery Link Inventory",
+		Color: 0x00ff00,
+	}
+
+	if quality != "" {
+		embed.Title += fmt.Sprintf(" (%s)", strings.Title(quality))
+	}
+
+	if len(summary) == 0 {
+		embed.Description = "No links available in inventory"
+	} else {
+		var fields []*discordgo.MessageEmbedField
+		for linkType, qualities := range summary {
+			var value string
+			for qual, count := range qualities {
+				emoji := getQualityEmoji(qual)
+				value += fmt.Sprintf("%s %s: %d\n", emoji, strings.Title(qual), count)
+			}
+			fields = append(fields, &discordgo.MessageEmbedField{
+				Name:   linkType,
+				Value:  value,
+				Inline: true,
+			})
+		}
+		embed.Fields = fields
+	}
+
+	s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionResponseChannelMessageWithSource,
+		Data: &discordgo.InteractionResponseData{
+			Embeds: []*discordgo.MessageEmbed{embed},
+		},
+	})
+}
+
+func handleCheckRank(ctx context.Context, s *discordgo.Session, i *discordgo.InteractionCreate) {
+	targetUser := i.ApplicationCommandData().Options[0].UserValue(s)
+
+	member, err := dbClient.GetMember(ctx, targetUser.ID)
+	if err != nil {
+		respondError(s, i, fmt.Sprintf("%s is not registered as a guild member.", targetUser.Username))
+		return
+	}
+
+	member.UpdateRankAndEligibility()
+
+	embed := &discordgo.MessageEmbed{
+		Title: fmt.Sprintf("Status for %s", member.Username),
+		Color: getRankColor(member.Rank),
+		Fields: []*discordgo.MessageEmbedField{
+			{Name: "Rank", Value: member.Rank, Inline: true},
+			{Name: "Days in Guild", Value: strconv.Itoa(member.DaysInGuild), Inline: true},
+			{Name: "Silver Eligible", Value: boolToEmoji(member.SilverEligible), Inline: true},
+			{Name: "Gold Eligible", Value: boolToEmoji(member.GoldEligible), Inline: true},
+		},
+	}
+
+	s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionResponseChannelMessageWithSource,
+		Data: &discordgo.InteractionResponseData{
+			Embeds: []*discordgo.MessageEmbed{embed},
+		},
+	})
+}
+
+func handleAddMember(ctx context.Context, s *discordgo.Session, i *discordgo.InteractionCreate) {
+	if !isMaester(s, i.Member) {
+		respondError(s, i, "Only Maesters can add members.")
+		return
+	}
+
+	options := i.ApplicationCommandData().Options
+	targetUser := options[0].UserValue(s)
 	joinDateStr := options[1].StringValue()
 
-	var characterNames []string
-	var role string = "user"
+	joinDate, err := time.Parse("2006-01-02", joinDateStr)
+	if err != nil {
+		respondError(s, i, "Invalid date format. Use YYYY-MM-DD")
+		return
+	}
 
-	if len(options) > 2 && options[2].Name == "characters" {
-		characterNames = strings.Split(options[2].StringValue(), ",")
-		for i := range characterNames {
-			characterNames[i] = strings.TrimSpace(characterNames[i])
+	member := models.NewMember(targetUser.ID, targetUser.Username, joinDate, i.Member.User.ID)
+
+	err = dbClient.CreateMember(ctx, member)
+	if err != nil {
+		respondError(s, i, "Failed to add member")
+		return
+	}
+
+	embed := &discordgo.MessageEmbed{
+		Title: "Member Added",
+		Color: 0x00ff00,
+		Fields: []*discordgo.MessageEmbedField{
+			{Name: "Member", Value: targetUser.Username, Inline: true},
+			{Name: "Rank", Value: member.Rank, Inline: true},
+			{Name: "Join Date", Value: joinDate.Format("Jan 2, 2006"), Inline: true},
+		},
+	}
+
+	s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionResponseChannelMessageWithSource,
+		Data: &discordgo.InteractionResponseData{
+			Embeds: []*discordgo.MessageEmbed{embed},
+		},
+	})
+}
+
+func handlePromoteOfficer(ctx context.Context, s *discordgo.Session, i *discordgo.InteractionCreate) {
+	if !isMaester(s, i.Member) {
+		respondError(s, i, "Only Maesters can promote members.")
+		return
+	}
+
+	targetUser := i.ApplicationCommandData().Options[0].UserValue(s)
+
+	member, err := dbClient.GetMember(ctx, targetUser.ID)
+	if err != nil {
+		respondError(s, i, "Member not found")
+		return
+	}
+
+	member.PromoteToOfficer()
+
+	err = dbClient.UpdateMember(ctx, member)
+	if err != nil {
+		respondError(s, i, "Failed to promote member")
+		return
+	}
+
+	embed := &discordgo.MessageEmbed{
+		Title:       "Member Promoted",
+		Color:       0x800080,
+		Description: fmt.Sprintf("%s has been promoted to %s!", member.Username, member.Rank),
+	}
+
+	s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionResponseChannelMessageWithSource,
+		Data: &discordgo.InteractionResponseData{
+			Embeds: []*discordgo.MessageEmbed{embed},
+		},
+	})
+}
+
+func handleAddInventory(ctx context.Context, s *discordgo.Session, i *discordgo.InteractionCreate) {
+	if !isMaester(s, i.Member) {
+		respondError(s, i, "Only Maesters can add inventory.")
+		return
+	}
+
+	options := i.ApplicationCommandData().Options
+	linkType := options[0].StringValue()
+	quality := options[1].StringValue()
+	count := int(options[2].IntValue())
+
+	if count <= 0 {
+		respondError(s, i, "Count must be greater than 0")
+		return
+	}
+
+	bonus := models.GetLinkBonus(linkType, quality)
+	category := models.GetLinkCategory(linkType)
+
+	var createdCount int
+	for j := 0; j < count; j++ {
+		link := models.NewInventoryLink(linkType, quality, category, bonus, i.Member.User.ID)
+		err := dbClient.CreateInventoryLink(ctx, link)
+		if err != nil {
+			break
+		}
+		createdCount++
+	}
+
+	embed := &discordgo.MessageEmbed{
+		Title:       "Inventory Updated",
+		Color:       0x00ff00,
+		Description: fmt.Sprintf("Added %d %s %s links to inventory", createdCount, quality, linkType),
+	}
+
+	s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionResponseChannelMessageWithSource,
+		Data: &discordgo.InteractionResponseData{
+			Embeds: []*discordgo.MessageEmbed{embed},
+		},
+	})
+}
+
+func handlePickWinner(ctx context.Context, s *discordgo.Session, i *discordgo.InteractionCreate) {
+	if !isMaester(s, i.Member) {
+		respondError(s, i, "Only Maesters can pick winners.")
+		return
+	}
+
+	quality := i.ApplicationCommandData().Options[0].StringValue()
+
+	// Get eligible members
+	members, err := dbClient.GetAllMembers(ctx)
+	if err != nil {
+		respondError(s, i, "Failed to get members")
+		return
+	}
+
+	var eligibleMembers []*models.Member
+	for _, member := range members {
+		member.UpdateRankAndEligibility()
+		if (quality == "silver" && member.SilverEligible) || (quality == "gold" && member.GoldEligible) {
+			eligibleMembers = append(eligibleMembers, member)
 		}
 	}
 
-	if len(options) > 3 && options[3].Name == "role" {
-		role = options[3].StringValue()
-	}
-
-	// Parse join date
-	joinDate, err := time.Parse("2006-01-02", joinDateStr)
-	if err != nil {
-		s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-			Type: discordgo.InteractionResponseChannelMessageWithSource,
-			Data: &discordgo.InteractionResponseData{
-				Content: "Invalid date format. Please use YYYY-MM-DD format.",
-				Flags:   discordgo.MessageFlagsEphemeral,
-			},
-		})
+	if len(eligibleMembers) == 0 {
+		respondError(s, i, fmt.Sprintf("No members eligible for %s links", quality))
 		return
 	}
 
-	// Create member
-	member, err := b.memberService.CreateMember(ctx, user.ID, user.Username, characterNames, joinDate, role)
-	if err != nil {
-		s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-			Type: discordgo.InteractionResponseChannelMessageWithSource,
-			Data: &discordgo.InteractionResponseData{
-				Content: fmt.Sprintf("Failed to add member: %v", err),
-				Flags:   discordgo.MessageFlagsEphemeral,
-			},
-		})
-		return
-	}
+	// Pick random winner
+	rand.Seed(time.Now().UnixNano())
+	winner := eligibleMembers[rand.Intn(len(eligibleMembers))]
 
 	embed := &discordgo.MessageEmbed{
-		Title: "Member Added Successfully",
-		Color: 0x00ff00,
+		Title:       fmt.Sprintf("🎉 %s Link Winner!", strings.Title(quality)),
+		Color:       getQualityColor(quality),
+		Description: fmt.Sprintf("**%s** has been selected for a %s link!", winner.Username, quality),
 		Fields: []*discordgo.MessageEmbedField{
-			{Name: "Discord User", Value: user.Username, Inline: true},
-			{Name: "Join Date", Value: joinDate.Format("2006-01-02"), Inline: true},
-			{Name: "Role", Value: member.Role, Inline: true},
+			{Name: "Winner Rank", Value: winner.Rank, Inline: true},
+			{Name: "Days in Guild", Value: strconv.Itoa(winner.DaysInGuild), Inline: true},
+			{Name: "Total Eligible", Value: strconv.Itoa(len(eligibleMembers)), Inline: true},
 		},
-	}
-
-	if len(characterNames) > 0 {
-		embed.Fields = append(embed.Fields, &discordgo.MessageEmbedField{
-			Name:   "Characters",
-			Value:  strings.Join(characterNames, ", "),
-			Inline: false,
-		})
+		Timestamp: time.Now().Format(time.RFC3339),
 	}
 
 	s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
@@ -331,220 +547,30 @@ func (b *Bot) handleAddMember(ctx context.Context, s *discordgo.Session, i *disc
 	})
 }
 
-func (b *Bot) handleCheckStatus(ctx context.Context, s *discordgo.Session, i *discordgo.InteractionCreate) {
-	var userID string
+// Helper functions
 
-	if len(i.ApplicationCommandData().Options) > 0 {
-		user := i.ApplicationCommandData().Options[0].UserValue(s)
-		userID = user.ID
-	} else {
-		userID = i.Member.User.ID
-	}
-
-	status, err := b.memberService.GetMemberStatus(ctx, userID)
-	if err != nil {
-		s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-			Type: discordgo.InteractionResponseChannelMessageWithSource,
-			Data: &discordgo.InteractionResponseData{
-				Content: "Member not found or error occurred.",
-				Flags:   discordgo.MessageFlagsEphemeral,
-			},
-		})
-		return
-	}
-
-	embed := &discordgo.MessageEmbed{
-		Title: fmt.Sprintf("Status for %s", status.Member.DiscordUsername),
-		Color: 0x0099ff,
-		Fields: []*discordgo.MessageEmbedField{
-			{Name: "Days in Guild", Value: strconv.Itoa(status.DaysInGuild), Inline: true},
-			{Name: "Silver Eligible", Value: boolToEmoji(status.SilverEligible), Inline: true},
-			{Name: "Gold Eligible", Value: boolToEmoji(status.GoldEligible), Inline: true},
-			{Name: "Weekly Boss Participation", Value: boolToEmoji(status.Member.WeeklyBossParticipation), Inline: true},
-			{Name: "Omni Absences", Value: strconv.Itoa(status.Member.OmniAbsenceCount), Inline: true},
-			{Name: "Active Status", Value: boolToEmoji(status.IsActive), Inline: true},
-			{Name: "Total Silver Links", Value: strconv.Itoa(status.TotalSilverLinks), Inline: true},
-			{Name: "Total Gold Links", Value: strconv.Itoa(status.TotalGoldLinks), Inline: true},
-			{Name: "Compensation Links", Value: strconv.Itoa(status.CompensationLinks), Inline: true},
-		},
-	}
-
-	s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-		Type: discordgo.InteractionResponseChannelMessageWithSource,
-		Data: &discordgo.InteractionResponseData{
-			Embeds: []*discordgo.MessageEmbed{embed},
-		},
-	})
-}
-
-func (b *Bot) handleCurrentLists(ctx context.Context, s *discordgo.Session, i *discordgo.InteractionCreate) {
-	status, err := b.distributionService.GetAllListStatuses(ctx)
-	if err != nil {
-		s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-			Type: discordgo.InteractionResponseChannelMessageWithSource,
-			Data: &discordgo.InteractionResponseData{
-				Content: "Failed to get list status.",
-				Flags:   discordgo.MessageFlagsEphemeral,
-			},
-		})
-		return
-	}
-
-	embed := &discordgo.MessageEmbed{
-		Title: "Current Distribution Lists",
-		Color: 0xffd700,
-		Fields: []*discordgo.MessageEmbedField{
-			{Name: "Silver - Eligible", Value: strconv.Itoa(status.Silver.EligibleCount), Inline: true},
-			{Name: "Silver - Completed", Value: strconv.Itoa(status.Silver.CompletedCount), Inline: true},
-			{Name: "Silver - Compensation", Value: strconv.Itoa(status.Silver.CompensationCount), Inline: true},
-			{Name: "Gold - Eligible", Value: strconv.Itoa(status.Gold.EligibleCount), Inline: true},
-			{Name: "Gold - Completed", Value: strconv.Itoa(status.Gold.CompletedCount), Inline: true},
-			{Name: "Gold - Compensation", Value: strconv.Itoa(status.Gold.CompensationCount), Inline: true},
-		},
-	}
-
-	s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-		Type: discordgo.InteractionResponseChannelMessageWithSource,
-		Data: &discordgo.InteractionResponseData{
-			Embeds: []*discordgo.MessageEmbed{embed},
-		},
-	})
-}
-
-func (b *Bot) handleMarkParticipation(ctx context.Context, s *discordgo.Session, i *discordgo.InteractionCreate) {
-	options := i.ApplicationCommandData().Options
-	user := options[0].UserValue(s)
-	participated := options[1].BoolValue()
-
-	err := b.memberService.MarkWeeklyBossParticipation(ctx, user.ID, participated)
-	if err != nil {
-		s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-			Type: discordgo.InteractionResponseChannelMessageWithSource,
-			Data: &discordgo.InteractionResponseData{
-				Content: fmt.Sprintf("Failed to update participation: %v", err),
-				Flags:   discordgo.MessageFlagsEphemeral,
-			},
-		})
-		return
-	}
-
-	participationText := "marked as participated"
-	if !participated {
-		participationText = "marked as not participated"
-	}
-
-	s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-		Type: discordgo.InteractionResponseChannelMessageWithSource,
-		Data: &discordgo.InteractionResponseData{
-			Content: fmt.Sprintf("%s has been %s in weekly boss runs.", user.Username, participationText),
-		},
-	})
-}
-
-func (b *Bot) handleSpinWheel(ctx context.Context, s *discordgo.Session, i *discordgo.InteractionCreate) {
-	// Check if user has admin permissions (simplified check)
-	if !b.hasAdminPermissions(i.Member) {
-		s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-			Type: discordgo.InteractionResponseChannelMessageWithSource,
-			Data: &discordgo.InteractionResponseData{
-				Content: "You don't have permission to use this command.",
-				Flags:   discordgo.MessageFlagsEphemeral,
-			},
-		})
-		return
-	}
-
-	linkType := i.ApplicationCommandData().Options[0].StringValue()
-
-	// Update lists first
-	err := b.distributionService.UpdateDistributionLists(ctx)
-	if err != nil {
-		s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-			Type: discordgo.InteractionResponseChannelMessageWithSource,
-			Data: &discordgo.InteractionResponseData{
-				Content: "Failed to update distribution lists.",
-				Flags:   discordgo.MessageFlagsEphemeral,
-			},
-		})
-		return
-	}
-
-	result, err := b.distributionService.SelectRandomWinner(ctx, linkType)
-	if err != nil {
-		s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-			Type: discordgo.InteractionResponseChannelMessageWithSource,
-			Data: &discordgo.InteractionResponseData{
-				Content: fmt.Sprintf("Failed to select winner: %v", err),
-				Flags:   discordgo.MessageFlagsEphemeral,
-			},
-		})
-		return
-	}
-
-	compensationText := ""
-	if result.IsCompensation {
-		compensationText = " (Compensation)"
-	}
-
-	embed := &discordgo.MessageEmbed{
-		Title: "🎉 Link Winner Selected!",
-		Color: 0x00ff00,
-		Fields: []*discordgo.MessageEmbedField{
-			{Name: "Winner", Value: result.Winner.DiscordUsername + compensationText, Inline: true},
-			{Name: "Link Type", Value: strings.Title(result.LinkHistory.LinkType), Inline: true},
-			{Name: "Date", Value: result.LinkHistory.DateReceived.Format("2006-01-02"), Inline: true},
-		},
-		Timestamp: result.LinkHistory.DateReceived.Format(time.RFC3339),
-	}
-
-	s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-		Type: discordgo.InteractionResponseChannelMessageWithSource,
-		Data: &discordgo.InteractionResponseData{
-			Embeds: []*discordgo.MessageEmbed{embed},
-		},
-	})
-}
-
-func (b *Bot) handleHelp(ctx context.Context, s *discordgo.Session, i *discordgo.InteractionCreate) {
-	embed := &discordgo.MessageEmbed{
-		Title:       "FlavaFlav Bot Commands",
-		Description: "Available commands for the UO Outlands guild link distribution system:",
-		Color:       0x0099ff,
-		Fields: []*discordgo.MessageEmbedField{
-			{Name: "/add-member", Value: "Add a new guild member", Inline: false},
-			{Name: "/check-status", Value: "Check member eligibility status", Inline: false},
-			{Name: "/current-lists", Value: "Show current distribution lists", Inline: false},
-			{Name: "/mark-participation", Value: "Mark weekly boss participation", Inline: false},
-			{Name: "/spin-wheel", Value: "Spin the wheel for link distribution (Admin only)", Inline: false},
-			{Name: "/help", Value: "Show this help message", Inline: false},
-		},
-	}
-
-	s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-		Type: discordgo.InteractionResponseChannelMessageWithSource,
-		Data: &discordgo.InteractionResponseData{
-			Embeds: []*discordgo.MessageEmbed{embed},
-			Flags:  discordgo.MessageFlagsEphemeral,
-		},
-	})
-}
-
-func (b *Bot) hasAdminPermissions(member *discordgo.Member) bool {
-	// Simplified permission check - in production, you'd want more sophisticated role checking
+func isMaester(s *discordgo.Session, member *discordgo.Member) bool {
+	// Check if user has a role named "Maester" or is admin
 	for _, roleID := range member.Roles {
-		// You would configure these role IDs based on your Discord server
-		if roleID == "ADMIN_ROLE_ID" || roleID == "OFFICER_ROLE_ID" {
+		role, err := s.State.Role(guildID, roleID)
+		if err != nil {
+			continue
+		}
+		if role.Name == "Maester" || role.Permissions&discordgo.PermissionAdministrator != 0 {
 			return true
 		}
 	}
-
-	// Check if user has administrator permissions
-	permissions, err := b.session.UserChannelPermissions(member.User.ID, b.config.Discord.ChannelID)
-	if err == nil && permissions&discordgo.PermissionAdministrator != 0 {
-		return true
-	}
-
 	return false
+}
+
+func respondError(s *discordgo.Session, i *discordgo.InteractionCreate, message string) {
+	s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionResponseChannelMessageWithSource,
+		Data: &discordgo.InteractionResponseData{
+			Content: "❌ " + message,
+			Flags:   discordgo.MessageFlagsEphemeral,
+		},
+	})
 }
 
 func boolToEmoji(b bool) string {
@@ -552,4 +578,45 @@ func boolToEmoji(b bool) string {
 		return "✅"
 	}
 	return "❌"
+}
+
+func getRankColor(rank string) int {
+	switch rank {
+	case models.RankBookWorm:
+		return 0x8B4513 // Brown
+	case models.RankScholar:
+		return 0xC0C0C0 // Silver
+	case models.RankSage:
+		return 0xFFD700 // Gold
+	case models.RankMaester:
+		return 0x800080 // Purple
+	default:
+		return 0x666666 // Gray
+	}
+}
+
+func getQualityEmoji(quality string) string {
+	switch quality {
+	case "bronze":
+		return "🥉"
+	case "silver":
+		return "🥈"
+	case "gold":
+		return "🥇"
+	default:
+		return "⚪"
+	}
+}
+
+func getQualityColor(quality string) int {
+	switch quality {
+	case "bronze":
+		return 0xCD7F32
+	case "silver":
+		return 0xC0C0C0
+	case "gold":
+		return 0xFFD700
+	default:
+		return 0x666666
+	}
 }

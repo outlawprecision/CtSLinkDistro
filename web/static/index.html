@@ -4,181 +4,156 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>FlavaFlav - UO Outlands Guild Link Distribution</title>
-    <meta name="api-base-url" content="/api">
+    <title>FlavaFlav - Guild Link Distribution</title>
     <link rel="stylesheet" href="styles.css">
-    <script src="config.js"></script>
 </head>
 
 <body>
     <div class="container">
         <header>
-            <h1>🎯 FlavaFlav</h1>
-            <p>UO Outlands Guild Link Distribution System</p>
+            <h1>🎯 FlavaFlav Link Distribution</h1>
+            <p>UO Outlands Guild Mastery Link Management</p>
         </header>
 
-        <nav class="nav-tabs">
+        <nav class="tabs">
             <button class="tab-button active" onclick="showTab('dashboard')">Dashboard</button>
-            <button class="tab-button" onclick="showTab('wheel')">Picker Wheel</button>
             <button class="tab-button" onclick="showTab('members')">Members</button>
+            <button class="tab-button" onclick="showTab('inventory')">Inventory</button>
+            <button class="tab-button" onclick="showTab('picker')">Picker Wheel</button>
             <button class="tab-button" onclick="showTab('history')">History</button>
-            <a href="inventory.html" class="tab-button">🔗 Inventory</a>
         </nav>
 
         <!-- Dashboard Tab -->
         <div id="dashboard" class="tab-content active">
-            <div class="dashboard-grid">
-                <div class="status-card">
-                    <h3>Silver Links</h3>
-                    <div id="silver-status">
-                        <div class="status-item">
-                            <span class="label">Eligible:</span>
-                            <span id="silver-eligible">-</span>
-                        </div>
-                        <div class="status-item">
-                            <span class="label">Completed:</span>
-                            <span id="silver-completed">-</span>
-                        </div>
-                        <div class="status-item">
-                            <span class="label">Compensation Queue:</span>
-                            <span id="silver-compensation">-</span>
-                        </div>
-                        <div class="status-item">
-                            <span class="label">Progress:</span>
-                            <span id="silver-progress">-</span>
-                        </div>
-                    </div>
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <h3>Total Members</h3>
+                    <div class="stat-number" id="total-members">-</div>
                 </div>
-
-                <div class="status-card">
-                    <h3>Gold Links</h3>
-                    <div id="gold-status">
-                        <div class="status-item">
-                            <span class="label">Eligible:</span>
-                            <span id="gold-eligible">-</span>
-                        </div>
-                        <div class="status-item">
-                            <span class="label">Completed:</span>
-                            <span id="gold-completed">-</span>
-                        </div>
-                        <div class="status-item">
-                            <span class="label">Compensation Queue:</span>
-                            <span id="gold-compensation">-</span>
-                        </div>
-                        <div class="status-item">
-                            <span class="label">Progress:</span>
-                            <span id="gold-progress">-</span>
-                        </div>
-                    </div>
+                <div class="stat-card">
+                    <h3>Silver Eligible</h3>
+                    <div class="stat-number" id="silver-eligible">-</div>
+                </div>
+                <div class="stat-card">
+                    <h3>Gold Eligible</h3>
+                    <div class="stat-number" id="gold-eligible">-</div>
+                </div>
+                <div class="stat-card">
+                    <h3>Total Links</h3>
+                    <div class="stat-number" id="total-links">-</div>
                 </div>
             </div>
 
-            <div class="actions">
-                <button class="btn btn-primary" onclick="refreshStatus()">Refresh Status</button>
-                <button class="btn btn-secondary" onclick="updateLists()">Update Lists</button>
-                <button class="btn btn-warning" onclick="resetWeekly()">Reset Weekly Participation</button>
+            <div class="inventory-summary">
+                <h3>Inventory Summary</h3>
+                <div id="inventory-summary-content">Loading...</div>
+            </div>
+        </div>
+
+        <!-- Members Tab -->
+        <div id="members" class="tab-content">
+            <div class="section-header">
+                <h2>Guild Members</h2>
+                <button class="btn btn-primary" onclick="showAddMemberModal()">Add Member</button>
+            </div>
+            <div class="members-grid" id="members-list">
+                Loading members...
+            </div>
+        </div>
+
+        <!-- Inventory Tab -->
+        <div id="inventory" class="tab-content">
+            <div class="section-header">
+                <h2>Mastery Link Inventory</h2>
+                <button class="btn btn-primary" onclick="showAddInventoryModal()">Add Links</button>
+            </div>
+            <div class="inventory-grid" id="inventory-list">
+                Loading inventory...
             </div>
         </div>
 
         <!-- Picker Wheel Tab -->
-        <div id="wheel" class="tab-content">
-            <div class="wheel-container">
-                <div class="wheel-controls">
-                    <div class="link-type-selector">
-                        <label>
-                            <input type="radio" name="linkType" value="silver" checked>
-                            Silver Links
-                        </label>
-                        <label>
-                            <input type="radio" name="linkType" value="gold">
-                            Gold Links
-                        </label>
-                    </div>
-                    <button class="btn btn-large btn-primary" onclick="spinWheel()" id="spin-button">
-                        🎯 SPIN THE WHEEL
-                    </button>
+        <div id="picker" class="tab-content">
+            <div class="picker-section">
+                <h2>Random Winner Selection</h2>
+                <div class="picker-controls">
+                    <select id="picker-quality">
+                        <option value="silver">Silver Links</option>
+                        <option value="gold">Gold Links</option>
+                    </select>
+                    <button class="btn btn-primary" onclick="spinWheel()">🎯 Pick Winner</button>
                 </div>
 
-                <div class="wheel-display">
-                    <canvas id="wheelCanvas" width="400" height="400"></canvas>
+                <div class="wheel-container">
+                    <canvas id="wheel" width="400" height="400"></canvas>
                     <div class="wheel-pointer">▼</div>
                 </div>
 
-                <div id="winner-display" class="winner-display" style="display: none;">
+                <div id="winner-result" class="winner-result" style="display: none;">
                     <h3>🎉 Winner Selected!</h3>
                     <div id="winner-info"></div>
                 </div>
             </div>
         </div>
 
-        <!-- Members Tab -->
-        <div id="members" class="tab-content">
-            <div class="members-controls">
-                <button class="btn btn-primary" onclick="showAddMemberForm()">Add Member</button>
-                <input type="text" id="member-search" placeholder="Search members..." onkeyup="filterMembers()">
-            </div>
-
-            <div id="add-member-form" class="form-container" style="display: none;">
-                <h3>Add New Member</h3>
-                <form onsubmit="addMember(event)">
-                    <div class="form-group">
-                        <label>Discord ID:</label>
-                        <input type="text" id="discord-id" required>
-                    </div>
-                    <div class="form-group">
-                        <label>Discord Username:</label>
-                        <input type="text" id="discord-username" required>
-                    </div>
-                    <div class="form-group">
-                        <label>Character Names (comma separated):</label>
-                        <input type="text" id="character-names" placeholder="Character1, Character2, ...">
-                    </div>
-                    <div class="form-group">
-                        <label>Guild Join Date:</label>
-                        <input type="date" id="guild-join-date" required>
-                    </div>
-                    <div class="form-group">
-                        <label>Role:</label>
-                        <select id="role" required>
-                            <option value="user">User</option>
-                            <option value="officer">Officer</option>
-                            <option value="admin">Admin</option>
-                        </select>
-                    </div>
-                    <div class="form-actions">
-                        <button type="submit" class="btn btn-primary">Add Member</button>
-                        <button type="button" class="btn btn-secondary" onclick="hideAddMemberForm()">Cancel</button>
-                    </div>
-                </form>
-            </div>
-
-            <div id="members-list" class="members-list">
-                <!-- Members will be loaded here -->
-            </div>
-        </div>
-
         <!-- History Tab -->
         <div id="history" class="tab-content">
-            <div class="history-controls">
-                <select id="history-filter">
-                    <option value="all">All Links</option>
-                    <option value="silver">Silver Links</option>
-                    <option value="gold">Gold Links</option>
-                    <option value="compensation">Compensation Links</option>
-                </select>
-                <button class="btn btn-primary" onclick="loadHistory()">Refresh</button>
-            </div>
-            <div id="history-list" class="history-list">
-                <!-- History will be loaded here -->
+            <h2>Distribution History</h2>
+            <div id="history-list">
+                Loading history...
             </div>
         </div>
     </div>
 
-    <div id="loading" class="loading" style="display: none;">
-        <div class="spinner"></div>
+    <!-- Add Member Modal -->
+    <div id="add-member-modal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeModal('add-member-modal')">&times;</span>
+            <h2>Add New Member</h2>
+            <form id="add-member-form">
+                <div class="form-group">
+                    <label for="discord-id">Discord ID:</label>
+                    <input type="text" id="discord-id" required>
+                </div>
+                <div class="form-group">
+                    <label for="username">Username:</label>
+                    <input type="text" id="username" required>
+                </div>
+                <div class="form-group">
+                    <label for="join-date">Guild Join Date:</label>
+                    <input type="date" id="join-date" required>
+                </div>
+                <button type="submit" class="btn btn-primary">Add Member</button>
+            </form>
+        </div>
     </div>
 
-    <div id="notification" class="notification" style="display: none;"></div>
+    <!-- Add Inventory Modal -->
+    <div id="add-inventory-modal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeModal('add-inventory-modal')">&times;</span>
+            <h2>Add Mastery Links</h2>
+            <form id="add-inventory-form">
+                <div class="form-group">
+                    <label for="link-type">Link Type:</label>
+                    <input type="text" id="link-type" placeholder="e.g., Melee Damage" required>
+                </div>
+                <div class="form-group">
+                    <label for="quality">Quality:</label>
+                    <select id="quality" required>
+                        <option value="bronze">Bronze</option>
+                        <option value="silver">Silver</option>
+                        <option value="gold">Gold</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="count">Count:</label>
+                    <input type="number" id="count" min="1" required>
+                </div>
+                <button type="submit" class="btn btn-primary">Add Links</button>
+            </form>
+        </div>
+    </div>
 
     <script src="app.js"></script>
 </body>

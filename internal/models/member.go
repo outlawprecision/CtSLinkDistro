@@ -4,49 +4,106 @@ import (
 	"time"
 )
 
-// Member represents a guild member
-type Member struct {
-	DiscordID              string    `json:"discord_id" dynamodbav:"discord_id"`
-	DiscordUsername        string    `json:"discord_username" dynamodbav:"discord_username"`
-	CharacterNames         []string  `json:"character_names" dynamodbav:"character_names"`
-	GuildJoinDate          time.Time `json:"guild_join_date" dynamodbav:"guild_join_date"`
-	Role                   string    `json:"role" dynamodbav:"role"` // admin, officer, user
-	WeeklyBossParticipation bool     `json:"weekly_boss_participation" dynamodbav:"weekly_boss_participation"`
-	OmniParticipationDates []time.Time `json:"omni_participation_dates" dynamodbav:"omni_participation_dates"`
-	OmniAbsenceCount       int       `json:"omni_absence_count" dynamodbav:"omni_absence_count"`
-	CompensationOwed       bool      `json:"compensation_owed" dynamodbav:"compensation_owed"`
-	LastOmniParticipation  *time.Time `json:"last_omni_participation,omitempty" dynamodbav:"last_omni_participation,omitempty"`
-	CreatedAt              time.Time `json:"created_at" dynamodbav:"created_at"`
-	UpdatedAt              time.Time `json:"updated_at" dynamodbav:"updated_at"`
-}
-
-// MemberRole constants
+// Guild rank constants
 const (
-	RoleAdmin   = "admin"
-	RoleOfficer = "officer"
-	RoleUser    = "user"
+	RankBookWorm = "Book Worm" // <30 days, no links
+	RankScholar  = "Scholar"   // 30+ days, silver links
+	RankSage     = "Sage"      // 90+ days, gold links
+	RankMaester  = "Maester"   // Officer, admin access
 )
 
-// IsEligibleForSilver checks if member is eligible for silver links
-func (m *Member) IsEligibleForSilver() bool {
-	// Must be in guild for at least 30 days and have weekly boss participation
-	thirtyDaysAgo := time.Now().AddDate(0, 0, -30)
-	return m.GuildJoinDate.Before(thirtyDaysAgo) && m.WeeklyBossParticipation
+// Member represents a guild member with simplified structure
+type Member struct {
+	DiscordID      string    `json:"discord_id" dynamodbav:"discord_id"`
+	Username       string    `json:"username" dynamodbav:"username"`
+	JoinDate       time.Time `json:"join_date" dynamodbav:"join_date"`
+	Rank           string    `json:"rank" dynamodbav:"rank"`
+	IsOfficer      bool      `json:"is_officer" dynamodbav:"is_officer"`
+	SilverEligible bool      `json:"silver_eligible" dynamodbav:"silver_eligible"`
+	GoldEligible   bool      `json:"gold_eligible" dynamodbav:"gold_eligible"`
+	DaysInGuild    int       `json:"days_in_guild" dynamodbav:"days_in_guild"`
+	AddedBy        string    `json:"added_by" dynamodbav:"added_by"`
+	AddedDate      time.Time `json:"added_date" dynamodbav:"added_date"`
+	UpdatedAt      time.Time `json:"updated_at" dynamodbav:"updated_at"`
 }
 
-// IsEligibleForGold checks if member is eligible for gold links
-func (m *Member) IsEligibleForGold() bool {
-	// Must be in guild for at least 90 days and have weekly boss participation
-	ninetyDaysAgo := time.Now().AddDate(0, 0, -90)
-	return m.GuildJoinDate.Before(ninetyDaysAgo) && m.WeeklyBossParticipation
+// NewMember creates a new member with calculated rank and eligibility
+func NewMember(discordID, username string, joinDate time.Time, addedBy string) *Member {
+	member := &Member{
+		DiscordID: discordID,
+		Username:  username,
+		JoinDate:  joinDate,
+		IsOfficer: false,
+		AddedBy:   addedBy,
+		AddedDate: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+
+	member.UpdateRankAndEligibility()
+	return member
 }
 
-// IsActive checks if member is considered active (not exceeding absence threshold)
-func (m *Member) IsActive(maxAbsences int) bool {
-	return m.OmniAbsenceCount < maxAbsences
+// UpdateRankAndEligibility calculates and updates rank and eligibility based on join date
+func (m *Member) UpdateRankAndEligibility() {
+	m.DaysInGuild = int(time.Since(m.JoinDate).Hours() / 24)
+	m.UpdatedAt = time.Now()
+
+	// Don't change officer rank automatically
+	if m.IsOfficer {
+		m.Rank = RankMaester
+		m.SilverEligible = true
+		m.GoldEligible = true
+		return
+	}
+
+	// Calculate rank based on days in guild
+	if m.DaysInGuild < 30 {
+		m.Rank = RankBookWorm
+		m.SilverEligible = false
+		m.GoldEligible = false
+	} else if m.DaysInGuild < 90 {
+		m.Rank = RankScholar
+		m.SilverEligible = true
+		m.GoldEligible = false
+	} else {
+		m.Rank = RankSage
+		m.SilverEligible = true
+		m.GoldEligible = true
+	}
 }
 
-// GetDaysInGuild returns the number of days the member has been in the guild
-func (m *Member) GetDaysInGuild() int {
-	return int(time.Since(m.GuildJoinDate).Hours() / 24)
+// PromoteToOfficer promotes member to Maester rank
+func (m *Member) PromoteToOfficer() {
+	m.IsOfficer = true
+	m.Rank = RankMaester
+	m.SilverEligible = true
+	m.GoldEligible = true
+	m.UpdatedAt = time.Now()
+}
+
+// DemoteFromOfficer removes officer status and recalculates rank
+func (m *Member) DemoteFromOfficer() {
+	m.IsOfficer = false
+	m.UpdateRankAndEligibility()
+}
+
+// CanEditSystem returns true if member has admin privileges
+func (m *Member) CanEditSystem() bool {
+	return m.IsOfficer && m.Rank == RankMaester
+}
+
+// GetRankColor returns a color code for the rank (for UI)
+func (m *Member) GetRankColor() string {
+	switch m.Rank {
+	case RankBookWorm:
+		return "#8B4513" // Brown
+	case RankScholar:
+		return "#C0C0C0" // Silver
+	case RankSage:
+		return "#FFD700" // Gold
+	case RankMaester:
+		return "#800080" // Purple
+	default:
+		return "#666666" // Gray
+	}
 }

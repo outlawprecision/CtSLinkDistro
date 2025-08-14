@@ -1,250 +1,263 @@
-# CtSLinkDistro - UO Outlands Guild Link Distribution System
+# FlavaFlav - Simplified Guild Link Distribution System
 
-A comprehensive web application and Discord bot for managing link distribution in UO Outlands guilds. Built with Go, AWS services, and modern web technologies.
+A clean, focused web application and Discord bot for managing UO Outlands guild mastery link distribution. Built with Go, AWS Lambda, DynamoDB, and modern web technologies.
 
-## Features
+## 🎯 Core Features
 
-### Core Functionality
-- **Member Management**: Track guild members with Discord integration
-- **Eligibility System**: Automatic eligibility calculation based on guild tenure and participation
-- **Distribution Lists**: Separate silver and gold link distribution queues
-- **Random Selection**: Visual picker wheel for fair link distribution
-- **Absence Tracking**: Automatic inactive member management with compensation system
-- **History Tracking**: Complete audit trail of all link distributions
+### Guild Rank System
+- **Book Worm** - New members (<30 days) - No link eligibility
+- **Scholar** - Veterans (30+ days) - Silver link eligible  
+- **Sage** - Elders (90+ days) - Gold link eligible
+- **Maester** - Officers - Admin access + all links
 
 ### Web Application
-- **Dashboard**: Real-time status of distribution lists
-- **Picker Wheel**: Interactive spinning wheel for winner selection
-- **Member Directory**: Searchable member list with detailed status
-- **Admin Panel**: Complete member and list management
+- **Dashboard** - Real-time stats and inventory overview
+- **Member Management** - View members with automatic rank calculation
+- **Inventory Tracking** - Individual mastery link management
+- **Picker Wheel** - Visual spinning wheel for fair winner selection
+- **Distribution History** - Complete audit trail
 
 ### Discord Bot
-- **Slash Commands**: Modern Discord integration with interactive commands
-- **Member Management**: Add/remove members directly from Discord
-- **Status Checking**: Quick eligibility and participation status
-- **Automated Notifications**: Winner announcements and system updates
+- **Member Commands** - Check status, view inventory, see history
+- **Officer Commands** - Add members, manage inventory, pick winners
+- **Automatic Permissions** - Role-based access control
 
-## Architecture
+## 🏗️ Architecture
 
 ### Technology Stack
-- **Backend**: Go with clean architecture patterns
-- **Database**: AWS DynamoDB for scalable NoSQL storage
-- **Frontend**: Vanilla JavaScript with modern CSS
-- **Discord**: DiscordGo library for bot functionality
-- **Cloud**: AWS Lambda serverless deployment
+- **Backend**: Go with clean, simple architecture
+- **Database**: AWS DynamoDB (single table design)
+- **API**: AWS Lambda with API Gateway
+- **Frontend**: Vanilla HTML/CSS/JavaScript
+- **Discord**: DiscordGo with slash commands
+- **Deployment**: CloudFormation infrastructure as code
 
-### Project Structure
+### Simplified Structure
 ```
-CtSLinkDistro/
+FlavaFlav/
 ├── cmd/
-│   ├── web/           # Web application entry point
-│   ├── discord-bot/   # Discord bot entry point
-│   └── lambda/        # AWS Lambda functions
+│   ├── lambda/main.go      # Web API Lambda function
+│   └── discord-bot/main.go # Discord bot application
 ├── internal/
-│   ├── models/        # Data models and business logic
-│   ├── services/      # Business logic layer
-│   ├── handlers/      # HTTP handlers
-│   └── database/      # DynamoDB operations
-├── web/
-│   └── static/        # Frontend assets (HTML, CSS, JS)
-├── cloudformation/    # AWS CloudFormation templates
-├── scripts/          # Deployment and utility scripts
-├── docs/             # Documentation
-└── configs/          # Configuration files
+│   ├── models/             # Simple data models
+│   ├── handlers/           # API handlers
+│   └── db/                 # DynamoDB operations
+├── web/static/             # Frontend files
+├── cloudformation/         # AWS infrastructure
+└── scripts/               # Deployment scripts
 ```
 
-## Prerequisites
+## 🚀 Quick Start
 
-- Go 1.21 or higher
-- AWS Account with appropriate permissions
-- AWS CLI configured
-- Discord Bot Token (for Discord integration)
+### Prerequisites
+- Go 1.21+
+- AWS Account with CLI configured
+- Discord Bot Token (optional)
 
-## Quick Start
-
-### 1. Clone and Setup
+### 1. Clone and Build
 ```bash
 git clone https://github.com/outlawprecision/CtSLinkDistro.git
 cd CtSLinkDistro
 go mod tidy
 ```
 
-### 2. Deploy to AWS
+### 2. Test Locally
 ```bash
-# Deploy to development environment
+# Build Lambda function
+go build ./cmd/lambda
+
+# Build Discord bot
+go build ./cmd/discord-bot
+```
+
+### 3. Deploy to AWS
+```bash
+# Deploy infrastructure
 make deploy-dev
 
 # Upload static files
 make upload-static BUCKET=your-s3-bucket-name
 ```
 
-### 3. Configure Environment
-Copy `.env.example` to `.env` and configure:
+### 4. Configure Environment
+Set environment variables:
 ```bash
-# AWS Configuration
+# Required
+DYNAMODB_TABLE=flavaflav-dev
 AWS_REGION=us-east-1
-DYNAMODB_TABLE=ctslinkdistro-dev
-AWS_ACCESS_KEY_ID=your_access_key
-AWS_SECRET_ACCESS_KEY=your_secret_key
 
-# Discord Configuration (optional)
+# Discord Bot (optional)
 DISCORD_BOT_TOKEN=your_bot_token
 DISCORD_GUILD_ID=your_guild_id
-DISCORD_CHANNEL_ID=your_channel_id
 ```
 
-## Usage
+## 📱 Discord Commands
 
-### Web Application
-1. Access your deployed CloudFront URL
-2. Use the Dashboard to view current distribution status
-3. Add members through the Members tab
-4. Use the Picker Wheel to select winners
-5. Track history and manage lists
+### Everyone Can Use
+- `/my-status` - Check your rank, eligibility, and history
+- `/inventory [quality]` - View current mastery link inventory
+- `/check-rank @member` - Check any member's rank and eligibility
 
-### Discord Bot Commands
-- `/add-member` - Add a new guild member
-- `/check-status` - Check member eligibility status
-- `/current-lists` - Show distribution list status
-- `/mark-participation` - Mark weekly boss participation
-- `/spin-wheel` - Select random winner (Admin only)
-- `/help` - Show available commands
+### Maesters Only
+- `/add-member @user YYYY-MM-DD` - Add new guild member
+- `/promote-officer @member` - Promote member to Maester
+- `/add-inventory "Link Type" quality count` - Add mastery links
+- `/pick-winner quality` - Random winner selection with announcement
 
-## Business Rules
+## 🎮 Web Interface
 
-### Eligibility Requirements
-- **Silver Links**: 30+ days in guild + weekly boss participation
-- **Gold Links**: 90+ days in guild + weekly boss participation
+### Member Dashboard
+- View your current rank and eligibility status
+- Check days in guild and distribution history
+- Browse current inventory
 
-### Distribution System
-- Members are added to eligible lists based on criteria
-- Random selection ensures fairness
-- Completed members wait for list reset
-- Inactive members (3+ consecutive absences) are moved to compensation queue
+### Maester Admin Panel
+- Manage all guild members
+- Add and track mastery link inventory
+- Use visual picker wheel for distributions
+- View complete distribution history
+- Bulk operations and reporting
 
-### List Management
-- Lists automatically reset when all eligible members have received links
-- Force completion available for lists with inactive members
-- Compensation system ensures returning members receive priority
+## 🔧 API Endpoints
 
-## API Endpoints
-
-### Member Management
-- `GET /api/members` - Get all members
+### Members
+- `GET /api/members` - List all members
 - `GET /api/member?discord_id=<id>` - Get specific member
-- `POST /api/member/create` - Create new member
-- `GET /api/member/status?discord_id=<id>` - Get member status
+- `POST /api/member/create` - Add new member (Maester only)
+- `POST /api/member/promote?discord_id=<id>` - Promote to officer
+
+### Inventory
+- `GET /api/inventory` - List available links
+- `GET /api/inventory/summary` - Inventory counts by type/quality
+- `POST /api/inventory/add` - Add new links (Maester only)
 
 ### Distribution
-- `GET /api/distribution/status` - Get distribution list status
-- `POST /api/distribution/spin?type=<silver|gold>` - Select random winner
-- `POST /api/distribution/force-complete?type=<silver|gold>` - Force complete list
-- `GET /api/distribution/eligible?type=<silver|gold>` - Get eligible members
+- `GET /api/distribution/eligible?quality=<silver|gold>` - Get eligible members
+- `POST /api/distribution/pick-winner` - Random winner selection
+- `GET /api/distribution/history` - Distribution history
 
-### Utilities
-- `POST /api/utility/reset-weekly` - Reset weekly participation
-- `POST /api/utility/update-lists` - Update distribution lists
-- `GET /api/health` - Health check
+## 🎯 Business Rules
 
-## AWS Deployment
+### Automatic Rank Calculation
+- Ranks update automatically based on guild join date
+- Officers manually promoted to Maester rank
+- Eligibility calculated in real-time
 
-### CloudFormation Deployment (Recommended)
-The application includes complete infrastructure as code:
+### Link Distribution
+- Silver links: 30+ days in guild
+- Gold links: 90+ days in guild
+- Random selection ensures fairness
+- Complete audit trail maintained
 
-1. **Deploy to Development**
-   ```bash
-   make deploy-dev
-   ```
+### Security
+- Role-based permissions (view vs admin)
+- Discord role integration for bot commands
+- All admin actions require Maester privileges
 
-2. **Deploy to Production**
-   ```bash
-   # Configure parameters first
-   cp cloudformation/parameters-dev.json cloudformation/parameters-prod.json
-   # Edit parameters-prod.json with your domain and certificate
-   make deploy-prod
-   ```
+## 🛠️ Development
 
-3. **Upload Static Files**
-   ```bash
-   make upload-static BUCKET=your-s3-bucket-name
-   ```
-
-**What gets deployed:**
-- AWS Lambda function for the API
-- DynamoDB table with proper indexes
-- API Gateway with custom domain support
-- S3 bucket for static files
-- CloudFront CDN distribution
-- CloudWatch monitoring and alarms
-- IAM roles with least-privilege access
-
-### Manual Lambda Deployment
-For custom deployments:
-
-1. **Build for Lambda**
-   ```bash
-   make lambda-build
-   ```
-
-2. **Deploy to AWS Lambda**
-   - Upload the `bootstrap` binary to AWS Lambda
-   - Configure environment variables
-   - Set up API Gateway for HTTP endpoints
-
-For detailed deployment instructions, see [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
-
-## Available Make Targets
-
+### Build Commands
 ```bash
-# Development
-make build          # Build both applications
-make run-web        # Run web application locally (requires AWS)
-make run-bot        # Run Discord bot
+# Build Lambda function
+go build -o bootstrap cmd/lambda/main.go
 
-# AWS Deployment
-make deploy-dev     # Deploy to development environment
-make deploy-prod    # Deploy to production environment
-make update-lambda  # Update Lambda function code only
-make delete-stack   # Delete CloudFormation stack
+# Build Discord bot
+go build -o discord-bot cmd/discord-bot/main.go
 
-# Utilities
-make lambda-build   # Build for AWS Lambda
-make clean          # Clean build artifacts
-make help           # Show all available targets
+# Test compilation
+go build ./...
 ```
 
-## Configuration
+### Local Development
+```bash
+# Run with local DynamoDB
+export DYNAMODB_TABLE=flavaflav-local
+go run cmd/lambda/main.go
 
-### Default Settings
-- Silver eligibility: 30 days
-- Gold eligibility: 90 days
-- Maximum absence count: 3
-- Web server port: 8080
+# Run Discord bot
+export DISCORD_BOT_TOKEN=your_token
+export DISCORD_GUILD_ID=your_guild
+go run cmd/discord-bot/main.go
+```
 
-### Customization
-Modify `internal/models/config.go` or use environment variables to customize settings.
+## 📊 Data Models
 
-## Contributing
+### Member
+```go
+type Member struct {
+    DiscordID      string    // Discord user ID
+    Username       string    // Display name
+    JoinDate       time.Time // Guild join date
+    Rank           string    // Auto-calculated rank
+    IsOfficer      bool      // Maester status
+    SilverEligible bool      // Auto-calculated
+    GoldEligible   bool      // Auto-calculated
+    DaysInGuild    int       // Auto-calculated
+}
+```
+
+### Inventory Link
+```go
+type InventoryLink struct {
+    LinkID      string    // Unique identifier
+    LinkType    string    // e.g., "Melee Damage"
+    Quality     string    // bronze, silver, gold
+    Category    string    // Link category
+    Bonus       string    // e.g., "3.75%"
+    IsAvailable bool      // Distribution status
+}
+```
+
+### Distribution
+```go
+type Distribution struct {
+    DistributionID string    // Unique identifier
+    MemberID       string    // Who received it
+    LinkID         string    // Which link
+    LinkType       string    // Link details
+    Quality        string    // Link quality
+    Method         string    // "web" or "discord"
+    DistributedAt  time.Time // When
+}
+```
+
+## 🚀 Deployment
+
+### AWS Infrastructure
+- **Lambda Function** - Serverless API
+- **DynamoDB Table** - Single table for all data
+- **API Gateway** - HTTP endpoints
+- **S3 + CloudFront** - Static file hosting
+- **IAM Roles** - Least-privilege access
+
+### Make Targets
+```bash
+make build          # Build all components
+make deploy-dev     # Deploy to development
+make deploy-prod    # Deploy to production
+make clean          # Clean build artifacts
+```
+
+## 🤝 Contributing
 
 1. Fork the repository
 2. Create a feature branch
 3. Make your changes
-4. Add tests if applicable
+4. Test thoroughly
 5. Submit a pull request
 
-## License
+## 📄 License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+MIT License - see LICENSE file for details.
 
-## Support
+## 🎉 What's New
 
-For support and questions:
-- Create an issue in the repository
-- Contact the development team
-- Check the documentation for common solutions
+This is a **complete rewrite** focusing on:
+- ✅ Simplified architecture (removed over-engineering)
+- ✅ Clean, maintainable code
+- ✅ Essential features only
+- ✅ Better user experience
+- ✅ Reliable deployment process
+- ✅ Clear documentation
 
-## Acknowledgments
-
-- UO Outlands community for requirements and feedback
-- Discord.js community for bot development guidance
-- AWS documentation for serverless architecture patterns
+The old complex system has been archived and this new version provides all the core functionality you need without the complexity that caused problems.
