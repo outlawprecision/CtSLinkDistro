@@ -73,6 +73,20 @@ func main() {
 }
 
 func (h *LambdaHandler) HandleRequest(ctx context.Context, request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
+	// Handle CORS preflight requests
+	if request.HTTPMethod == "OPTIONS" {
+		return events.APIGatewayProxyResponse{
+			StatusCode: 200,
+			Headers: map[string]string{
+				"Access-Control-Allow-Origin":  "*",
+				"Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+				"Access-Control-Allow-Headers": "Content-Type, Authorization, X-Requested-With",
+				"Access-Control-Max-Age":       "86400",
+			},
+			Body: "",
+		}, nil
+	}
+
 	// Convert Lambda request to HTTP request
 	httpReq, err := h.convertToHTTPRequest(request)
 	if err != nil {
@@ -80,7 +94,10 @@ func (h *LambdaHandler) HandleRequest(ctx context.Context, request events.APIGat
 			StatusCode: 500,
 			Body:       fmt.Sprintf(`{"error": "Failed to convert request: %v"}`, err),
 			Headers: map[string]string{
-				"Content-Type": "application/json",
+				"Content-Type":                 "application/json",
+				"Access-Control-Allow-Origin":  "*",
+				"Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+				"Access-Control-Allow-Headers": "Content-Type, Authorization, X-Requested-With",
 			},
 		}, nil
 	}
@@ -91,6 +108,11 @@ func (h *LambdaHandler) HandleRequest(ctx context.Context, request events.APIGat
 		headers:    make(map[string]string),
 		body:       "",
 	}
+
+	// Add CORS headers to recorder
+	recorder.headers["Access-Control-Allow-Origin"] = "*"
+	recorder.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
+	recorder.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, X-Requested-With"
 
 	// Route the request
 	h.routeRequest(recorder, httpReq)

@@ -3,8 +3,8 @@ let currentMembers = [];
 let currentEligibleMembers = [];
 let isSpinning = false;
 
-// API base URL - Use direct API Gateway URL to bypass CloudFront issues
-const API_BASE = 'https://kiyajsbp09.execute-api.us-east-1.amazonaws.com/dev/api';
+// API base URL - Use configuration from config.js
+const API_BASE = window.FlavaFlavConfig.API_BASE;
 
 // Initialize the application
 document.addEventListener('DOMContentLoaded', function () {

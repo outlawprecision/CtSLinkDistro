@@ -6,6 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Link Inventory - CtSLinkDistro</title>
     <link rel="stylesheet" href="styles.css">
+    <script src="config.js"></script>
     <style>
         .inventory-container {
             max-width: 1200px;
@@ -254,8 +255,8 @@
             try {
                 showLoading();
 
-                // API base URL - Use direct API Gateway URL to bypass CloudFront issues
-                const API_BASE = 'https://kiyajsbp09.execute-api.us-east-1.amazonaws.com/dev/api';
+                // API base URL - Use configuration from config.js
+                const API_BASE = window.FlavaFlavConfig.API_BASE;
 
                 // Load summary and inventory data
                 const [summaryResponse, inventoryResponse] = await Promise.all([
@@ -414,7 +415,7 @@
 
         async function updateLinkCounts(linkType) {
             try {
-                const API_BASE = 'https://kiyajsbp09.execute-api.us-east-1.amazonaws.com/dev/api';
+                const API_BASE = window.FlavaFlavConfig.API_BASE;
 
                 const bronzeInput = document.getElementById(`bronze-${linkType}`);
                 const silverInput = document.getElementById(`silver-${linkType}`);
@@ -486,7 +487,7 @@
             try {
                 showLoading();
 
-                const API_BASE = 'https://kiyajsbp09.execute-api.us-east-1.amazonaws.com/dev/api';
+                const API_BASE = window.FlavaFlavConfig.API_BASE;
 
                 const response = await fetch(`${API_BASE}/inventory/initialize`, {
                     method: 'POST'
