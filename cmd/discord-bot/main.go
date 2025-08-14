@@ -27,7 +27,7 @@ func init() {
 	// Get configuration from environment variables
 	tableName := os.Getenv("DYNAMODB_TABLE")
 	if tableName == "" {
-		tableName = "flavaflav-dev"
+		log.Fatal("DYNAMODB_TABLE environment variable is required")
 	}
 
 	guildID = os.Getenv("DISCORD_GUILD_ID")

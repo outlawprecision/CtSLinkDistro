@@ -6,9 +6,9 @@ set -e
 # Configuration
 STACK_NAME="flavaflav"
 REGION="us-east-1"
-ENVIRONMENT="dev"
+ENVIRONMENT=""
 TEMPLATE_FILE="cloudformation/flavaflav-infrastructure.yaml"
-PARAMETERS_FILE="cloudformation/parameters-dev.json"
+PARAMETERS_FILE=""
 
 # Colors for output
 RED='\033[0;31m'
@@ -62,7 +62,7 @@ while [[ $# -gt 0 ]]; do
             echo "Usage: $0 [OPTIONS]"
             echo ""
             echo "Options:"
-            echo "  -e, --environment ENV    Environment (dev, staging, prod) [default: dev]"
+            echo "  -e, --environment ENV    Environment (dev, staging, prod) [REQUIRED]"
             echo "  -r, --region REGION      AWS region [default: us-east-1]"
             echo "  -s, --stack-name NAME    CloudFormation stack name [default: flavaflav]"
             echo "      --delete             Delete the stack instead of creating/updating"
@@ -70,10 +70,10 @@ while [[ $# -gt 0 ]]; do
             echo "  -h, --help               Show this help message"
             echo ""
             echo "Examples:"
-            echo "  $0                       Deploy dev environment"
-            echo "  $0 -e prod -r us-west-2 Deploy prod environment in us-west-2"
-            echo "  $0 --delete              Delete the stack"
-            echo "  $0 --update-lambda       Update Lambda function code only"
+            echo "  $0 -e dev                Deploy dev environment"
+            echo "  $0 -e prod -r us-west-2  Deploy prod environment in us-west-2"
+            echo "  $0 -e dev --delete       Delete the dev stack"
+            echo "  $0 -e dev --update-lambda Update Lambda function code only"
             exit 0
             ;;
         *)
@@ -82,6 +82,25 @@ while [[ $# -gt 0 ]]; do
             ;;
     esac
 done
+
+# Validate required parameters
+if [[ -z "$ENVIRONMENT" ]]; then
+    print_error "Environment is required. Use -e or --environment to specify dev, staging, or prod"
+    echo ""
+    echo "Examples:"
+    echo "  $0 -e dev     Deploy to development"
+    echo "  $0 -e prod    Deploy to production"
+    exit 1
+fi
+
+# Validate environment value
+if [[ "$ENVIRONMENT" != "dev" && "$ENVIRONMENT" != "staging" && "$ENVIRONMENT" != "prod" ]]; then
+    print_error "Invalid environment: $ENVIRONMENT. Must be dev, staging, or prod"
+    exit 1
+fi
+
+# Set parameters file based on environment
+PARAMETERS_FILE="cloudformation/parameters-${ENVIRONMENT}.json"
 
 # Update stack name with environment
 FULL_STACK_NAME="${STACK_NAME}-${ENVIRONMENT}"

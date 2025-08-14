@@ -31,7 +31,7 @@ Resources:
       BillingMode: PAY_PER_REQUEST
       AttributeDefinitions:
         - AttributeName: "user_id"
-          AttributeType: "S" # Fixed: was "HASH"
+          AttributeType: "S"
         - AttributeName: "discord_id"
           AttributeType: "S"
         - AttributeName: "link_id"
@@ -160,8 +160,15 @@ Resources:
       Runtime: provided.al2
       Handler: bootstrap
       Code:
-        S3Bucket: sherwood-artifacts
-        S3Key: lambda-deployment.zip
+        ZipFile: |
+          exports.handler = async (event) => {
+              return {
+                  statusCode: 200,
+                  body: JSON.stringify({
+                      message: 'Lambda function deployed but code needs to be updated via deployment script'
+                  })
+              };
+          };
       Role: !GetAtt LambdaExecutionRole.Arn
       Timeout: 30
       MemorySize: 512

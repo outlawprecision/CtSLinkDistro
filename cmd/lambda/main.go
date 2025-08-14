@@ -20,7 +20,7 @@ func init() {
 	// Get table name from environment variable
 	tableName := os.Getenv("DYNAMODB_TABLE")
 	if tableName == "" {
-		tableName = "flavaflav-dev" // default table name
+		log.Fatal("DYNAMODB_TABLE environment variable is required")
 	}
 
 	// Initialize DynamoDB client
