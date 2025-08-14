@@ -7,33 +7,33 @@ import (
 
 // LinkInventoryItem represents a single link type in the guild's inventory
 type LinkInventoryItem struct {
-	LinkType    string    `json:"link_type" dynamodb:"link_type"`
-	Category    string    `json:"category" dynamodb:"category"`
-	Description string    `json:"description" dynamodb:"description"`
-	BronzeCount int       `json:"bronze_count" dynamodb:"bronze_count"`
-	SilverCount int       `json:"silver_count" dynamodb:"silver_count"`
-	GoldCount   int       `json:"gold_count" dynamodb:"gold_count"`
-	BronzeBonus string    `json:"bronze_bonus" dynamodb:"bronze_bonus"`
-	SilverBonus string    `json:"silver_bonus" dynamodb:"silver_bonus"`
-	GoldBonus   string    `json:"gold_bonus" dynamodb:"gold_bonus"`
-	IsActive    bool      `json:"is_active" dynamodb:"is_active"`
-	Notes       string    `json:"notes" dynamodb:"notes"`
-	LastUpdated time.Time `json:"last_updated" dynamodb:"last_updated"`
-	UpdatedBy   string    `json:"updated_by" dynamodb:"updated_by"`
+	LinkType    string    `json:"link_type" dynamodbav:"link_type"`
+	Category    string    `json:"category" dynamodbav:"category"`
+	Description string    `json:"description" dynamodbav:"description"`
+	BronzeCount int       `json:"bronze_count" dynamodbav:"bronze_count"`
+	SilverCount int       `json:"silver_count" dynamodbav:"silver_count"`
+	GoldCount   int       `json:"gold_count" dynamodbav:"gold_count"`
+	BronzeBonus string    `json:"bronze_bonus" dynamodbav:"bronze_bonus"`
+	SilverBonus string    `json:"silver_bonus" dynamodbav:"silver_bonus"`
+	GoldBonus   string    `json:"gold_bonus" dynamodbav:"gold_bonus"`
+	IsActive    bool      `json:"is_active" dynamodbav:"is_active"`
+	Notes       string    `json:"notes" dynamodbav:"notes"`
+	LastUpdated time.Time `json:"last_updated" dynamodbav:"last_updated"`
+	UpdatedBy   string    `json:"updated_by" dynamodbav:"updated_by"`
 }
 
 // LinkInventoryTransaction represents a change to the inventory
 type LinkInventoryTransaction struct {
-	TransactionID string    `json:"transaction_id" dynamodb:"transaction_id"`
-	LinkType      string    `json:"link_type" dynamodb:"link_type"`
-	Quality       string    `json:"quality" dynamodb:"quality"`         // bronze, silver, gold
-	ChangeType    string    `json:"change_type" dynamodb:"change_type"` // add, remove, adjust
-	Quantity      int       `json:"quantity" dynamodb:"quantity"`
-	PreviousCount int       `json:"previous_count" dynamodb:"previous_count"`
-	NewCount      int       `json:"new_count" dynamodb:"new_count"`
-	Reason        string    `json:"reason" dynamodb:"reason"`
-	UpdatedBy     string    `json:"updated_by" dynamodb:"updated_by"`
-	Timestamp     time.Time `json:"timestamp" dynamodb:"timestamp"`
+	TransactionID string    `json:"transaction_id" dynamodbav:"transaction_id"`
+	LinkType      string    `json:"link_type" dynamodbav:"link_type"`
+	Quality       string    `json:"quality" dynamodbav:"quality"`         // bronze, silver, gold
+	ChangeType    string    `json:"change_type" dynamodbav:"change_type"` // add, remove, adjust
+	Quantity      int       `json:"quantity" dynamodbav:"quantity"`
+	PreviousCount int       `json:"previous_count" dynamodbav:"previous_count"`
+	NewCount      int       `json:"new_count" dynamodbav:"new_count"`
+	Reason        string    `json:"reason" dynamodbav:"reason"`
+	UpdatedBy     string    `json:"updated_by" dynamodbav:"updated_by"`
+	Timestamp     time.Time `json:"timestamp" dynamodbav:"timestamp"`
 }
 
 // LinkCategory represents the different categories of links
