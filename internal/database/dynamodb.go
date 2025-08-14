@@ -15,12 +15,13 @@ import (
 
 // DynamoDBService handles all DynamoDB operations
 type DynamoDBService struct {
-	client    *dynamodb.Client
-	tableName string
+	client             *dynamodb.Client
+	tableName          string
+	inventoryTableName string
 }
 
 // NewDynamoDBService creates a new DynamoDB service instance
-func NewDynamoDBService(region, tableName string) (*DynamoDBService, error) {
+func NewDynamoDBService(region, tableName, inventoryTableName string) (*DynamoDBService, error) {
 	cfg, err := config.LoadDefaultConfig(context.TODO(), config.WithRegion(region))
 	if err != nil {
 		return nil, fmt.Errorf("unable to load SDK config: %v", err)
@@ -29,8 +30,9 @@ func NewDynamoDBService(region, tableName string) (*DynamoDBService, error) {
 	client := dynamodb.NewFromConfig(cfg)
 
 	return &DynamoDBService{
-		client:    client,
-		tableName: tableName,
+		client:             client,
+		tableName:          tableName,
+		inventoryTableName: inventoryTableName,
 	}, nil
 }
 
@@ -64,7 +66,7 @@ func (db *DynamoDBService) CreateLinkInventoryItem(ctx context.Context, item *mo
 	}
 
 	_, err = db.client.PutItem(ctx, &dynamodb.PutItemInput{
-		TableName: aws.String(db.tableName),
+		TableName: aws.String(db.inventoryTableName),
 		Item:      dbItem,
 	})
 	if err != nil {
@@ -77,7 +79,7 @@ func (db *DynamoDBService) CreateLinkInventoryItem(ctx context.Context, item *mo
 // GetLinkInventoryItem retrieves a link inventory item by link type
 func (db *DynamoDBService) GetLinkInventoryItem(ctx context.Context, linkType string) (*models.LinkInventoryItem, error) {
 	result, err := db.client.GetItem(ctx, &dynamodb.GetItemInput{
-		TableName: aws.String(db.tableName),
+		TableName: aws.String(db.inventoryTableName),
 		Key: map[string]types.AttributeValue{
 			"link_type": &types.AttributeValueMemberS{Value: linkType},
 		},
@@ -107,7 +109,7 @@ func (db *DynamoDBService) UpdateLinkInventoryItem(ctx context.Context, item *mo
 	}
 
 	_, err = db.client.PutItem(ctx, &dynamodb.PutItemInput{
-		TableName: aws.String(db.tableName),
+		TableName: aws.String(db.inventoryTableName),
 		Item:      dbItem,
 	})
 	if err != nil {
@@ -120,8 +122,7 @@ func (db *DynamoDBService) UpdateLinkInventoryItem(ctx context.Context, item *mo
 // GetAllLinkInventoryItems retrieves all link inventory items
 func (db *DynamoDBService) GetAllLinkInventoryItems(ctx context.Context) ([]*models.LinkInventoryItem, error) {
 	result, err := db.client.Scan(ctx, &dynamodb.ScanInput{
-		TableName:        aws.String(db.tableName),
-		FilterExpression: aws.String("attribute_exists(link_type) AND attribute_exists(category) AND attribute_not_exists(discord_id) AND attribute_not_exists(list_type)"),
+		TableName: aws.String(db.inventoryTableName),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to scan link inventory items: %v", err)
@@ -143,8 +144,8 @@ func (db *DynamoDBService) GetAllLinkInventoryItems(ctx context.Context) ([]*mod
 // GetLinkInventoryItemsByCategory retrieves link inventory items by category
 func (db *DynamoDBService) GetLinkInventoryItemsByCategory(ctx context.Context, category string) ([]*models.LinkInventoryItem, error) {
 	result, err := db.client.Scan(ctx, &dynamodb.ScanInput{
-		TableName:        aws.String(db.tableName),
-		FilterExpression: aws.String("category = :category AND attribute_exists(link_type) AND attribute_not_exists(discord_id) AND attribute_not_exists(list_type)"),
+		TableName:        aws.String(db.inventoryTableName),
+		FilterExpression: aws.String("category = :category"),
 		ExpressionAttributeValues: map[string]types.AttributeValue{
 			":category": &types.AttributeValueMemberS{Value: category},
 		},
@@ -174,7 +175,7 @@ func (db *DynamoDBService) CreateLinkInventoryTransaction(ctx context.Context, t
 	}
 
 	_, err = db.client.PutItem(ctx, &dynamodb.PutItemInput{
-		TableName: aws.String(db.tableName),
+		TableName: aws.String(db.inventoryTableName),
 		Item:      item,
 	})
 	if err != nil {
@@ -187,11 +188,11 @@ func (db *DynamoDBService) CreateLinkInventoryTransaction(ctx context.Context, t
 // GetLinkInventoryTransactions retrieves transactions for a specific link type
 func (db *DynamoDBService) GetLinkInventoryTransactions(ctx context.Context, linkType string) ([]*models.LinkInventoryTransaction, error) {
 	result, err := db.client.Query(ctx, &dynamodb.QueryInput{
-		TableName:              aws.String(db.tableName),
-		IndexName:              aws.String("link_type-timestamp-index"),
-		KeyConditionExpression: aws.String("link_type = :link_type"),
+		TableName:              aws.String(db.inventoryTableName),
+		IndexName:              aws.String("transaction_id-timestamp-index"),
+		KeyConditionExpression: aws.String("transaction_id = :transaction_id"),
 		ExpressionAttributeValues: map[string]types.AttributeValue{
-			":link_type": &types.AttributeValueMemberS{Value: linkType},
+			":transaction_id": &types.AttributeValueMemberS{Value: linkType},
 		},
 		ScanIndexForward: aws.Bool(false), // Most recent first
 	})

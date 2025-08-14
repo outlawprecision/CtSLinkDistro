@@ -28,8 +28,14 @@ func main() {
 		config.Web.Port = port
 	}
 
+	// Get inventory table name
+	inventoryTableName := os.Getenv("DYNAMODB_INVENTORY_TABLE")
+	if inventoryTableName == "" {
+		inventoryTableName = "flavaflav-inventory-dev" // Default for local development
+	}
+
 	// Initialize database
-	db, err := database.NewDynamoDBService(config.AWS.Region, config.AWS.DynamoDBTable)
+	db, err := database.NewDynamoDBService(config.AWS.Region, config.AWS.DynamoDBTable, inventoryTableName)
 	if err != nil {
 		log.Fatalf("Failed to initialize database: %v", err)
 	}

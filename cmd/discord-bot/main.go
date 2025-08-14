@@ -39,13 +39,25 @@ func main() {
 	if channelID := os.Getenv("DISCORD_CHANNEL_ID"); channelID != "" {
 		config.Discord.ChannelID = channelID
 	}
+	if region := os.Getenv("AWS_REGION"); region != "" {
+		config.AWS.Region = region
+	}
+	if table := os.Getenv("DYNAMODB_TABLE"); table != "" {
+		config.AWS.DynamoDBTable = table
+	}
 
 	if config.Discord.BotToken == "" {
 		log.Fatal("DISCORD_BOT_TOKEN environment variable is required")
 	}
 
+	// Get inventory table name
+	inventoryTableName := os.Getenv("DYNAMODB_INVENTORY_TABLE")
+	if inventoryTableName == "" {
+		inventoryTableName = "flavaflav-inventory-dev" // Default fallback
+	}
+
 	// Initialize database
-	db, err := database.NewDynamoDBService(config.AWS.Region, config.AWS.DynamoDBTable)
+	db, err := database.NewDynamoDBService(config.AWS.Region, config.AWS.DynamoDBTable, inventoryTableName)
 	if err != nil {
 		log.Fatalf("Failed to initialize database: %v", err)
 	}

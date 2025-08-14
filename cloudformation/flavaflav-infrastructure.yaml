@@ -23,11 +23,11 @@ Conditions:
   HasCertificate: !Not [!Equals [!Ref CertificateArn, ""]]
 
 Resources:
-  # DynamoDB Table
-  FlavaFlavTable:
+  # DynamoDB Table for Users/Members
+  UsersTable:
     Type: AWS::DynamoDB::Table
     Properties:
-      TableName: !Sub "flavaflav-${Environment}"
+      TableName: !Sub "flavaflav-users-${Environment}"
       BillingMode: PAY_PER_REQUEST
       AttributeDefinitions:
         - AttributeName: "user_id"
@@ -78,6 +78,47 @@ Resources:
         - Key: "Application"
           Value: "FlavaFlav"
 
+  # DynamoDB Table for Link Inventory
+  InventoryTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "flavaflav-inventory-${Environment}"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: "link_type"
+          AttributeType: "S"
+        - AttributeName: "category"
+          AttributeType: "S"
+        - AttributeName: "transaction_id"
+          AttributeType: "S"
+        - AttributeName: "timestamp"
+          AttributeType: "S"
+      KeySchema:
+        - AttributeName: "link_type"
+          KeyType: "HASH"
+      GlobalSecondaryIndexes:
+        - IndexName: "category-index"
+          KeySchema:
+            - AttributeName: "category"
+              KeyType: "HASH"
+          Projection:
+            ProjectionType: "ALL"
+        - IndexName: "transaction_id-timestamp-index"
+          KeySchema:
+            - AttributeName: "transaction_id"
+              KeyType: "HASH"
+            - AttributeName: "timestamp"
+              KeyType: "RANGE"
+          Projection:
+            ProjectionType: "ALL"
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      Tags:
+        - Key: "Environment"
+          Value: !Ref Environment
+        - Key: "Application"
+          Value: "FlavaFlav"
+
   # IAM Role for Lambda
   LambdaExecutionRole:
     Type: AWS::IAM::Role
@@ -106,8 +147,10 @@ Resources:
                   - dynamodb:Query
                   - dynamodb:Scan
                 Resource:
-                  - !GetAtt FlavaFlavTable.Arn
-                  - !Sub "${FlavaFlavTable.Arn}/index/*"
+                  - !GetAtt UsersTable.Arn
+                  - !Sub "${UsersTable.Arn}/index/*"
+                  - !GetAtt InventoryTable.Arn
+                  - !Sub "${InventoryTable.Arn}/index/*"
 
   # Lambda Function
   FlavaFlavLambda:
@@ -125,7 +168,8 @@ Resources:
       Environment:
         Variables:
           REGION: !Ref "AWS::Region"
-          DYNAMODB_TABLE: !Ref FlavaFlavTable
+          DYNAMODB_TABLE: !Ref UsersTable
+          DYNAMODB_INVENTORY_TABLE: !Ref InventoryTable
           ENVIRONMENT: !Ref Environment
       Tags:
         - Key: "Environment"
@@ -335,7 +379,7 @@ Resources:
       ComparisonOperator: GreaterThanThreshold
       Dimensions:
         - Name: TableName
-          Value: !Ref FlavaFlavTable
+          Value: !Ref UsersTable
 
 Outputs:
   ApiGatewayUrl:
@@ -357,11 +401,17 @@ Outputs:
     Export:
       Name: !Sub "${AWS::StackName}-CustomDomainUrl"
 
-  DynamoDBTableName:
-    Description: "DynamoDB Table Name"
-    Value: !Ref FlavaFlavTable
+  UsersTableName:
+    Description: "DynamoDB Users Table Name"
+    Value: !Ref UsersTable
     Export:
-      Name: !Sub "${AWS::StackName}-TableName"
+      Name: !Sub "${AWS::StackName}-UsersTableName"
+
+  InventoryTableName:
+    Description: "DynamoDB Inventory Table Name"
+    Value: !Ref InventoryTable
+    Export:
+      Name: !Sub "${AWS::StackName}-InventoryTableName"
 
   S3BucketName:
     Description: "S3 Bucket for Static Files"
