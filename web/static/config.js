@@ -1,36 +1,44 @@
-// Configuration for different environments
-const CONFIG = {
-    development: {
-        API_BASE: 'https://kiyajsbp09.execute-api.us-east-1.amazonaws.com/dev/api'
-    },
-    production: {
-        API_BASE: '/api' // Use CloudFront routing in production
+// Dynamic API configuration - reads from meta tag, no hardcoded URLs
+function getApiBase() {
+    // First, try to get from meta tag
+    const metaTag = document.querySelector('meta[name="api-base-url"]');
+    if (metaTag && metaTag.content) {
+        return metaTag.content;
     }
-};
 
-// Determine environment based on hostname
+    // Fallback: try to detect from current location
+    const hostname = window.location.hostname;
+
+    // For localhost development, assume local server
+    if (hostname === 'localhost' || hostname === '127.0.0.1') {
+        return '/api'; // Assume local development uses relative paths
+    }
+
+    // Default fallback
+    return '/api';
+}
+
+// Determine environment
 function getEnvironment() {
     const hostname = window.location.hostname;
 
-    // If running on CloudFront distribution, assume production
+    if (hostname === 'localhost' || hostname === '127.0.0.1') {
+        return 'local';
+    }
+
     if (hostname.includes('cloudfront.net')) {
         return 'production';
     }
 
-    // If running on localhost or development domain, use development
-    if (hostname === 'localhost' || hostname.includes('dev')) {
-        return 'development';
-    }
-
-    // Default to development for now (since CloudFront API routing has issues)
-    return 'development';
+    return 'unknown';
 }
 
-// Get the current configuration
-const CURRENT_ENV = getEnvironment();
-
-// Export for use in other scripts
+// Export configuration
 window.FlavaFlavConfig = {
-    API_BASE: CONFIG[CURRENT_ENV].API_BASE,
-    ENVIRONMENT: CURRENT_ENV
+    API_BASE: getApiBase(),
+    ENVIRONMENT: getEnvironment(),
+    HOSTNAME: window.location.hostname
 };
+
+// Debug logging
+console.log('FlavaFlav Config:', window.FlavaFlavConfig);

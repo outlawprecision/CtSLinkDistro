@@ -304,6 +304,7 @@ Resources:
               OriginAccessIdentity: ""
           - Id: ApiGatewayOrigin
             DomainName: !Sub "${FlavaFlavApi}.execute-api.${AWS::Region}.amazonaws.com"
+            OriginPath: !Sub "/${Environment}"
             CustomOriginConfig:
               HTTPPort: 443
               HTTPSPort: 443
