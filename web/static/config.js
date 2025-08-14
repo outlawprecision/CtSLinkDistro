@@ -28,10 +28,9 @@ function getEnvironment() {
 
 // Get the current configuration
 const CURRENT_ENV = getEnvironment();
-const API_BASE = CONFIG[CURRENT_ENV].API_BASE;
 
 // Export for use in other scripts
 window.FlavaFlavConfig = {
-    API_BASE: API_BASE,
+    API_BASE: CONFIG[CURRENT_ENV].API_BASE,
     ENVIRONMENT: CURRENT_ENV
 };
