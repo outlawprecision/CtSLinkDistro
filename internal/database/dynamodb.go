@@ -367,7 +367,7 @@ func (db *DynamoDBService) GetDistributionList(ctx context.Context, listType str
 	result, err := db.client.GetItem(ctx, &dynamodb.GetItemInput{
 		TableName: aws.String(db.tableName),
 		Key: map[string]types.AttributeValue{
-			"list_type": &types.AttributeValueMemberS{Value: listType},
+			"discord_id": &types.AttributeValueMemberS{Value: "list_" + listType},
 		},
 	})
 	if err != nil {

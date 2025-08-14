@@ -6,15 +6,16 @@ import (
 
 // DistributionList represents the current distribution lists for silver and gold links
 type DistributionList struct {
-	ListType           string    `json:"list_type" dynamodbav:"list_type"` // silver, gold
-	EligibleMembers    []string  `json:"eligible_members" dynamodbav:"eligible_members"`
-	InactiveMembers    []string  `json:"inactive_members" dynamodbav:"inactive_members"`
-	CompensationQueue  []string  `json:"compensation_queue" dynamodbav:"compensation_queue"`
-	CurrentCycleStart  time.Time `json:"current_cycle_start" dynamodbav:"current_cycle_start"`
-	LastResetDate      time.Time `json:"last_reset_date" dynamodbav:"last_reset_date"`
-	CompletedMembers   []string  `json:"completed_members" dynamodbav:"completed_members"`
-	MaxAbsenceCount    int       `json:"max_absence_count" dynamodbav:"max_absence_count"`
-	UpdatedAt          time.Time `json:"updated_at" dynamodbav:"updated_at"`
+	DiscordID         string    `json:"discord_id" dynamodbav:"discord_id"` // Use list_type as discord_id for storage
+	ListType          string    `json:"list_type" dynamodbav:"list_type"`   // silver, gold
+	EligibleMembers   []string  `json:"eligible_members" dynamodbav:"eligible_members"`
+	InactiveMembers   []string  `json:"inactive_members" dynamodbav:"inactive_members"`
+	CompensationQueue []string  `json:"compensation_queue" dynamodbav:"compensation_queue"`
+	CurrentCycleStart time.Time `json:"current_cycle_start" dynamodbav:"current_cycle_start"`
+	LastResetDate     time.Time `json:"last_reset_date" dynamodbav:"last_reset_date"`
+	CompletedMembers  []string  `json:"completed_members" dynamodbav:"completed_members"`
+	MaxAbsenceCount   int       `json:"max_absence_count" dynamodbav:"max_absence_count"`
+	UpdatedAt         time.Time `json:"updated_at" dynamodbav:"updated_at"`
 }
 
 // DistributionListType constants
@@ -27,15 +28,16 @@ const (
 func NewDistributionList(listType string, maxAbsenceCount int) *DistributionList {
 	now := time.Now()
 	return &DistributionList{
-		ListType:           listType,
-		EligibleMembers:    []string{},
-		InactiveMembers:    []string{},
-		CompensationQueue:  []string{},
-		CurrentCycleStart:  now,
-		LastResetDate:      now,
-		CompletedMembers:   []string{},
-		MaxAbsenceCount:    maxAbsenceCount,
-		UpdatedAt:          now,
+		DiscordID:         "list_" + listType, // Use a unique identifier for the discord_id field
+		ListType:          listType,
+		EligibleMembers:   []string{},
+		InactiveMembers:   []string{},
+		CompensationQueue: []string{},
+		CurrentCycleStart: now,
+		LastResetDate:     now,
+		CompletedMembers:  []string{},
+		MaxAbsenceCount:   maxAbsenceCount,
+		UpdatedAt:         now,
 	}
 }
 
@@ -101,7 +103,7 @@ func (dl *DistributionList) ResetList() {
 	for _, memberID := range dl.InactiveMembers {
 		dl.AddToCompensationQueue(memberID)
 	}
-	
+
 	// Reset lists
 	dl.EligibleMembers = []string{}
 	dl.InactiveMembers = []string{}
