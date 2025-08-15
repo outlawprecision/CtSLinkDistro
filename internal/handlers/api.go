@@ -245,7 +245,9 @@ func (h *APIHandlers) AddInventory(w http.ResponseWriter, r *http.Request) {
 		link := models.NewInventoryLink(req.LinkType, req.Quality, category, bonus, "web-admin")
 		err := h.db.CreateInventoryLink(r.Context(), link)
 		if err != nil {
-			h.sendErrorResponse(w, fmt.Sprintf("Failed to create inventory link %d", i+1), http.StatusInternalServerError)
+			// Log the actual error for debugging
+			fmt.Printf("ERROR creating inventory link: %v\n", err)
+			h.sendErrorResponse(w, fmt.Sprintf("Failed to create inventory link %d: %v", i+1, err), http.StatusInternalServerError)
 			return
 		}
 		createdLinks = append(createdLinks, link)
@@ -430,7 +432,7 @@ func (h *APIHandlers) DistributeLink(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !link.IsAvailable {
+	if link.IsAvailable != "true" {
 		h.sendErrorResponse(w, "Link is not available", http.StatusBadRequest)
 		return
 	}
@@ -573,30 +575,37 @@ func (h *APIHandlers) EnableCORS(next http.HandlerFunc) http.HandlerFunc {
 func (h *APIHandlers) SetupRoutes() *http.ServeMux {
 	mux := http.NewServeMux()
 
-	// Member endpoints
-	mux.HandleFunc("/api/members", h.EnableCORS(h.GetMembers))
-	mux.HandleFunc("/api/member", h.EnableCORS(h.GetMember))
-	mux.HandleFunc("/api/member/create", h.EnableCORS(h.CreateMember))
-	mux.HandleFunc("/api/member/promote", h.EnableCORS(h.PromoteMember))
-	mux.HandleFunc("/api/member/history", h.EnableCORS(h.GetMemberHistory))
+	// Register routes with both patterns to handle API Gateway stage prefix
+	// CloudFront adds /dev to origin path, then API Gateway adds another /dev
+	// So we need to handle /dev/dev/api/* patterns as well
+	stages := []string{"", "/dev", "/staging", "/prod", "/dev/dev", "/staging/staging", "/prod/prod"}
 
-	// Inventory endpoints
-	mux.HandleFunc("/api/inventory", h.EnableCORS(h.GetInventory))
-	mux.HandleFunc("/api/inventory/summary", h.EnableCORS(h.GetInventorySummary))
-	mux.HandleFunc("/api/inventory/add", h.EnableCORS(h.AddInventory))
+	for _, stage := range stages {
+		// Member endpoints
+		mux.HandleFunc(stage+"/api/members", h.EnableCORS(h.GetMembers))
+		mux.HandleFunc(stage+"/api/member", h.EnableCORS(h.GetMember))
+		mux.HandleFunc(stage+"/api/member/create", h.EnableCORS(h.CreateMember))
+		mux.HandleFunc(stage+"/api/member/promote", h.EnableCORS(h.PromoteMember))
+		mux.HandleFunc(stage+"/api/member/history", h.EnableCORS(h.GetMemberHistory))
 
-	// Distribution endpoints
-	mux.HandleFunc("/api/distribution/eligible", h.EnableCORS(h.GetEligibleMembers))
-	mux.HandleFunc("/api/distribution/lists", h.EnableCORS(h.GetDistributionLists))
-	mux.HandleFunc("/api/distribution/create-list", h.EnableCORS(h.CreateDistributionList))
-	mux.HandleFunc("/api/distribution/pick-winner", h.EnableCORS(h.PickWinner))
-	mux.HandleFunc("/api/distribution/distribute", h.EnableCORS(h.DistributeLink))
-	mux.HandleFunc("/api/distribution/history", h.EnableCORS(h.GetAllHistory))
+		// Inventory endpoints
+		mux.HandleFunc(stage+"/api/inventory", h.EnableCORS(h.GetInventory))
+		mux.HandleFunc(stage+"/api/inventory/summary", h.EnableCORS(h.GetInventorySummary))
+		mux.HandleFunc(stage+"/api/inventory/add", h.EnableCORS(h.AddInventory))
 
-	// Health check
-	mux.HandleFunc("/api/health", h.EnableCORS(h.HealthCheck))
+		// Distribution endpoints
+		mux.HandleFunc(stage+"/api/distribution/eligible", h.EnableCORS(h.GetEligibleMembers))
+		mux.HandleFunc(stage+"/api/distribution/lists", h.EnableCORS(h.GetDistributionLists))
+		mux.HandleFunc(stage+"/api/distribution/create-list", h.EnableCORS(h.CreateDistributionList))
+		mux.HandleFunc(stage+"/api/distribution/pick-winner", h.EnableCORS(h.PickWinner))
+		mux.HandleFunc(stage+"/api/distribution/distribute", h.EnableCORS(h.DistributeLink))
+		mux.HandleFunc(stage+"/api/distribution/history", h.EnableCORS(h.GetAllHistory))
 
-	// Serve static files
+		// Health check
+		mux.HandleFunc(stage+"/api/health", h.EnableCORS(h.HealthCheck))
+	}
+
+	// Serve static files (only for root, not needed in Lambda)
 	mux.Handle("/", http.FileServer(http.Dir("web/static/")))
 
 	return mux

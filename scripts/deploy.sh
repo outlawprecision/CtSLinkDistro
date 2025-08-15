@@ -224,7 +224,7 @@ fi
 
 # Build Lambda function first
 print_info "Building Lambda function..."
-make lambda-build
+make build-lambda
 
 if [[ ! -f "bootstrap" ]]; then
     print_error "Lambda binary 'bootstrap' not found. Build failed."
@@ -316,6 +316,33 @@ API_URL=$(echo "$OUTPUTS" | jq -r '.[] | select(.OutputKey=="ApiGatewayUrl") | .
 CLOUDFRONT_URL=$(echo "$OUTPUTS" | jq -r '.[] | select(.OutputKey=="CloudFrontUrl") | .OutputValue')
 S3_BUCKET=$(echo "$OUTPUTS" | jq -r '.[] | select(.OutputKey=="S3BucketName") | .OutputValue')
 
+# Update config.js with the actual API Gateway URL
+if [[ -n "$API_URL" && "$API_URL" != "null" ]]; then
+    print_info "Updating config.js with API Gateway URL..."
+    # Create a temporary config.js with the actual API URL
+    sed "s|__API_GATEWAY_URL__|${API_URL}|g" web/static/config.js > /tmp/config.js.tmp
+    cp /tmp/config.js.tmp web/static/config.js
+    rm -f /tmp/config.js.tmp
+    print_success "config.js updated with API Gateway URL"
+fi
+
+# Upload static files to S3
+if [[ -n "$S3_BUCKET" && "$S3_BUCKET" != "null" ]]; then
+    print_info "Uploading static files to S3..."
+    aws s3 sync web/static/ s3://$S3_BUCKET/ --region $REGION --delete
+    print_success "Static files uploaded to S3"
+    
+    # Invalidate CloudFront cache if distribution exists
+    if [[ -n "$CLOUDFRONT_URL" && "$CLOUDFRONT_URL" != "null" ]]; then
+        DISTRIBUTION_ID=$(aws cloudfront list-distributions --query "DistributionList.Items[?Comment=='FlavaFlav CDN - ${ENVIRONMENT}'].Id" --output text --region $REGION)
+        if [[ -n "$DISTRIBUTION_ID" ]]; then
+            print_info "Creating CloudFront invalidation..."
+            aws cloudfront create-invalidation --distribution-id $DISTRIBUTION_ID --paths "/*" --region $REGION > /dev/null
+            print_success "CloudFront cache invalidated"
+        fi
+    fi
+fi
+
 print_success "Deployment completed successfully!"
 echo ""
 print_info "Important URLs:"
@@ -327,10 +354,11 @@ if [[ -n "$CLOUDFRONT_URL" && "$CLOUDFRONT_URL" != "null" ]]; then
 fi
 
 echo ""
-print_info "Next steps:"
-echo "  1. Upload static files to S3 bucket: $S3_BUCKET"
-echo "  2. Test the API endpoints"
-echo "  3. Configure your Discord bot (if needed)"
+print_info "Your application is ready!"
+echo "  Access your app at: $CLOUDFRONT_URL"
 echo ""
-print_info "To upload static files:"
-echo "  aws s3 sync web/static/ s3://$S3_BUCKET/ --region $REGION"
+print_info "The four DynamoDB tables have been created:"
+echo "  - flavaflav-members-${ENVIRONMENT}"
+echo "  - flavaflav-inventory-${ENVIRONMENT}"
+echo "  - flavaflav-distributions-${ENVIRONMENT}"
+echo "  - flavaflav-lists-${ENVIRONMENT}"

@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: "2010-09-09"
-Description: "FlavaFlav - UO Outlands Guild Link Distribution System Infrastructure"
+Description: "FlavaFlav - UO Outlands Guild Link Distribution System Infrastructure (Four-Table Architecture)"
 
 Parameters:
   Environment:
@@ -34,53 +34,22 @@ Conditions:
   HasLambdaCodeKey: !Not [!Equals [!Ref LambdaCodeKey, ""]]
 
 Resources:
-  # DynamoDB Table for Users/Members
-  UsersTable:
+  # ==========================================
+  # DynamoDB Tables (Four-Table Architecture)
+  # ==========================================
+
+  # 1. Members Table - Guild member profiles
+  MembersTable:
     Type: AWS::DynamoDB::Table
     Properties:
-      TableName: !Sub "flavaflav-users-${Environment}"
+      TableName: !Sub "flavaflav-members-${Environment}"
       BillingMode: PAY_PER_REQUEST
       AttributeDefinitions:
-        - AttributeName: "user_id"
-          AttributeType: "S"
         - AttributeName: "discord_id"
-          AttributeType: "S"
-        - AttributeName: "link_id"
-          AttributeType: "S"
-        - AttributeName: "list_type"
-          AttributeType: "S"
-        - AttributeName: "timestamp"
           AttributeType: "S"
       KeySchema:
         - AttributeName: "discord_id"
           KeyType: "HASH"
-      GlobalSecondaryIndexes:
-        - IndexName: "discord_id-timestamp-index"
-          KeySchema:
-            - AttributeName: "discord_id"
-              KeyType: "HASH"
-            - AttributeName: "timestamp"
-              KeyType: "RANGE"
-          Projection:
-            ProjectionType: "ALL"
-        - IndexName: "list_type-index"
-          KeySchema:
-            - AttributeName: "list_type"
-              KeyType: "HASH"
-          Projection:
-            ProjectionType: "ALL"
-        - IndexName: "user_id-index" # Added to use user_id
-          KeySchema:
-            - AttributeName: "user_id"
-              KeyType: "HASH"
-          Projection:
-            ProjectionType: "ALL"
-        - IndexName: "link_id-index" # Added to use link_id
-          KeySchema:
-            - AttributeName: "link_id"
-              KeyType: "HASH"
-          Projection:
-            ProjectionType: "ALL"
       PointInTimeRecoverySpecification:
         PointInTimeRecoveryEnabled: true
       Tags:
@@ -88,37 +57,43 @@ Resources:
           Value: !Ref Environment
         - Key: "Application"
           Value: "FlavaFlav"
+        - Key: "TableType"
+          Value: "Members"
 
-  # DynamoDB Table for Link Inventory
+  # 2. Inventory Table - Available mastery links
   InventoryTable:
     Type: AWS::DynamoDB::Table
     Properties:
       TableName: !Sub "flavaflav-inventory-${Environment}"
       BillingMode: PAY_PER_REQUEST
       AttributeDefinitions:
+        - AttributeName: "link_id"
+          AttributeType: "S"
+        - AttributeName: "is_available"
+          AttributeType: "S" # Using string for boolean to work with GSI
+        - AttributeName: "quality"
+          AttributeType: "S"
         - AttributeName: "link_type"
-          AttributeType: "S"
-        - AttributeName: "category"
-          AttributeType: "S"
-        - AttributeName: "transaction_id"
-          AttributeType: "S"
-        - AttributeName: "timestamp"
           AttributeType: "S"
       KeySchema:
-        - AttributeName: "link_type"
+        - AttributeName: "link_id"
           KeyType: "HASH"
       GlobalSecondaryIndexes:
-        - IndexName: "category-index"
+        # GSI1: Query available links by quality
+        - IndexName: "availability-quality-index"
           KeySchema:
-            - AttributeName: "category"
+            - AttributeName: "is_available"
               KeyType: "HASH"
+            - AttributeName: "quality"
+              KeyType: "RANGE"
           Projection:
             ProjectionType: "ALL"
-        - IndexName: "transaction_id-timestamp-index"
+        # GSI2: Query by link type and quality
+        - IndexName: "type-quality-index"
           KeySchema:
-            - AttributeName: "transaction_id"
+            - AttributeName: "link_type"
               KeyType: "HASH"
-            - AttributeName: "timestamp"
+            - AttributeName: "quality"
               KeyType: "RANGE"
           Projection:
             ProjectionType: "ALL"
@@ -129,8 +104,95 @@ Resources:
           Value: !Ref Environment
         - Key: "Application"
           Value: "FlavaFlav"
+        - Key: "TableType"
+          Value: "Inventory"
 
+  # 3. Distributions Table - Audit trail of all distributions
+  DistributionsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "flavaflav-distributions-${Environment}"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: "distribution_id"
+          AttributeType: "S"
+        - AttributeName: "member_id"
+          AttributeType: "S"
+        - AttributeName: "distributed_at"
+          AttributeType: "S"
+        - AttributeName: "distribution_date"
+          AttributeType: "S"
+      KeySchema:
+        - AttributeName: "distribution_id"
+          KeyType: "HASH"
+      GlobalSecondaryIndexes:
+        # GSI1: Query member's distribution history
+        - IndexName: "member-date-index"
+          KeySchema:
+            - AttributeName: "member_id"
+              KeyType: "HASH"
+            - AttributeName: "distributed_at"
+              KeyType: "RANGE"
+          Projection:
+            ProjectionType: "ALL"
+        # GSI2: Query distributions by date
+        - IndexName: "date-index"
+          KeySchema:
+            - AttributeName: "distribution_date"
+              KeyType: "HASH"
+            - AttributeName: "distributed_at"
+              KeyType: "RANGE"
+          Projection:
+            ProjectionType: "ALL"
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      Tags:
+        - Key: "Environment"
+          Value: !Ref Environment
+        - Key: "Application"
+          Value: "FlavaFlav"
+        - Key: "TableType"
+          Value: "Distributions"
+
+  # 4. Lists Table - Distribution lists management
+  ListsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "flavaflav-lists-${Environment}"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: "list_id"
+          AttributeType: "S"
+        - AttributeName: "is_active"
+          AttributeType: "S" # Using string for boolean to work with GSI
+        - AttributeName: "quality"
+          AttributeType: "S"
+      KeySchema:
+        - AttributeName: "list_id"
+          KeyType: "HASH"
+      GlobalSecondaryIndexes:
+        # GSI1: Query active lists by quality
+        - IndexName: "active-quality-index"
+          KeySchema:
+            - AttributeName: "is_active"
+              KeyType: "HASH"
+            - AttributeName: "quality"
+              KeyType: "RANGE"
+          Projection:
+            ProjectionType: "ALL"
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      Tags:
+        - Key: "Environment"
+          Value: !Ref Environment
+        - Key: "Application"
+          Value: "FlavaFlav"
+        - Key: "TableType"
+          Value: "Lists"
+
+  # ==========================================
   # IAM Role for Lambda
+  # ==========================================
   LambdaExecutionRole:
     Type: AWS::IAM::Role
     Properties:
@@ -157,13 +219,25 @@ Resources:
                   - dynamodb:DeleteItem
                   - dynamodb:Query
                   - dynamodb:Scan
+                  - dynamodb:BatchGetItem
+                  - dynamodb:BatchWriteItem
                 Resource:
-                  - !GetAtt UsersTable.Arn
-                  - !Sub "${UsersTable.Arn}/index/*"
+                  # Members table and indexes
+                  - !GetAtt MembersTable.Arn
+                  - !Sub "${MembersTable.Arn}/index/*"
+                  # Inventory table and indexes
                   - !GetAtt InventoryTable.Arn
                   - !Sub "${InventoryTable.Arn}/index/*"
+                  # Distributions table and indexes
+                  - !GetAtt DistributionsTable.Arn
+                  - !Sub "${DistributionsTable.Arn}/index/*"
+                  # Lists table and indexes
+                  - !GetAtt ListsTable.Arn
+                  - !Sub "${ListsTable.Arn}/index/*"
 
+  # ==========================================
   # Lambda Function
+  # ==========================================
   FlavaFlavLambda:
     Type: AWS::Lambda::Function
     Properties:
@@ -182,16 +256,23 @@ Resources:
       Environment:
         Variables:
           REGION: !Ref "AWS::Region"
-          DYNAMODB_TABLE: !Ref UsersTable
-          DYNAMODB_INVENTORY_TABLE: !Ref InventoryTable
           ENVIRONMENT: !Ref Environment
+          # Four table names
+          DYNAMODB_MEMBERS_TABLE: !Ref MembersTable
+          DYNAMODB_INVENTORY_TABLE: !Ref InventoryTable
+          DYNAMODB_DISTRIBUTIONS_TABLE: !Ref DistributionsTable
+          DYNAMODB_LISTS_TABLE: !Ref ListsTable
+          # Legacy variable for backward compatibility (will be removed)
+          DYNAMODB_TABLE: !Ref MembersTable
       Tags:
         - Key: "Environment"
           Value: !Ref Environment
         - Key: "Application"
           Value: "FlavaFlav"
 
+  # ==========================================
   # API Gateway
+  # ==========================================
   FlavaFlavApi:
     Type: AWS::ApiGateway::RestApi
     Properties:
@@ -216,6 +297,7 @@ Resources:
       Action: lambda:InvokeFunction
       Principal: apigateway.amazonaws.com
       SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${FlavaFlavApi}/*/*"
+
   # API Gateway Deployment
   ApiGatewayDeployment:
     Type: AWS::ApiGateway::Deployment
@@ -346,7 +428,9 @@ Resources:
             method.response.header.Access-Control-Allow-Methods: true
             method.response.header.Access-Control-Allow-Origin: true
 
+  # ==========================================
   # S3 Bucket for Static Files
+  # ==========================================
   StaticFilesBucket:
     Type: AWS::S3::Bucket
     Properties:
@@ -380,7 +464,9 @@ Resources:
             Action: s3:GetObject
             Resource: !Sub "arn:aws:s3:::${StaticFilesBucket}/*"
 
+  # ==========================================
   # CloudFront Distribution
+  # ==========================================
   CloudFrontDistribution:
     Type: AWS::CloudFront::Distribution
     Properties:
@@ -407,7 +493,7 @@ Resources:
               OriginProtocolPolicy: http-only
           - Id: ApiGatewayOrigin
             DomainName: !Sub "${FlavaFlavApi}.execute-api.${AWS::Region}.amazonaws.com"
-            OriginPath: !Sub "/${Environment}"
+            OriginPath: ""
             CustomOriginConfig:
               HTTPPort: 443
               HTTPSPort: 443
@@ -451,7 +537,9 @@ Resources:
             ResponsePagePath: /index.html
             ErrorCachingMinTTL: 300
 
-  # CloudWatch Log Group for Lambda
+  # ==========================================
+  # CloudWatch Resources
+  # ==========================================
   LambdaLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
@@ -489,8 +577,11 @@ Resources:
       ComparisonOperator: GreaterThanThreshold
       Dimensions:
         - Name: TableName
-          Value: !Ref UsersTable
+          Value: !Ref MembersTable
 
+# ==========================================
+# Outputs
+# ==========================================
 Outputs:
   ApiGatewayUrl:
     Description: "API Gateway URL"
@@ -511,17 +602,29 @@ Outputs:
     Export:
       Name: !Sub "${AWS::StackName}-CustomDomainUrl"
 
-  UsersTableName:
-    Description: "DynamoDB Users Table Name"
-    Value: !Ref UsersTable
+  MembersTableName:
+    Description: "DynamoDB Members Table Name"
+    Value: !Ref MembersTable
     Export:
-      Name: !Sub "${AWS::StackName}-UsersTableName"
+      Name: !Sub "${AWS::StackName}-MembersTableName"
 
   InventoryTableName:
     Description: "DynamoDB Inventory Table Name"
     Value: !Ref InventoryTable
     Export:
       Name: !Sub "${AWS::StackName}-InventoryTableName"
+
+  DistributionsTableName:
+    Description: "DynamoDB Distributions Table Name"
+    Value: !Ref DistributionsTable
+    Export:
+      Name: !Sub "${AWS::StackName}-DistributionsTableName"
+
+  ListsTableName:
+    Description: "DynamoDB Lists Table Name"
+    Value: !Ref ListsTable
+    Export:
+      Name: !Sub "${AWS::StackName}-ListsTableName"
 
   S3BucketName:
     Description: "S3 Bucket for Static Files"

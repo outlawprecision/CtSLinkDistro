@@ -25,9 +25,32 @@ var (
 
 func init() {
 	// Get configuration from environment variables
-	tableName := os.Getenv("DYNAMODB_TABLE")
-	if tableName == "" {
-		log.Fatal("DYNAMODB_TABLE environment variable is required")
+	membersTable := os.Getenv("DYNAMODB_MEMBERS_TABLE")
+	inventoryTable := os.Getenv("DYNAMODB_INVENTORY_TABLE")
+	distributionsTable := os.Getenv("DYNAMODB_DISTRIBUTIONS_TABLE")
+	listsTable := os.Getenv("DYNAMODB_LISTS_TABLE")
+
+	// Fallback to legacy single table if new variables not set
+	if membersTable == "" {
+		membersTable = os.Getenv("DYNAMODB_TABLE")
+		if membersTable == "" {
+			log.Fatal("DYNAMODB_MEMBERS_TABLE environment variable is required")
+		}
+		// Use same table for all if only one is specified (backward compatibility)
+		inventoryTable = membersTable
+		distributionsTable = membersTable
+		listsTable = membersTable
+	}
+
+	// Validate all table names
+	if inventoryTable == "" {
+		log.Fatal("DYNAMODB_INVENTORY_TABLE environment variable is required")
+	}
+	if distributionsTable == "" {
+		log.Fatal("DYNAMODB_DISTRIBUTIONS_TABLE environment variable is required")
+	}
+	if listsTable == "" {
+		log.Fatal("DYNAMODB_LISTS_TABLE environment variable is required")
 	}
 
 	guildID = os.Getenv("DISCORD_GUILD_ID")
@@ -35,9 +58,9 @@ func init() {
 		log.Fatal("DISCORD_GUILD_ID environment variable is required")
 	}
 
-	// Initialize DynamoDB client
+	// Initialize DynamoDB client with four tables
 	var err error
-	dbClient, err = db.NewDynamoDBClient(tableName)
+	dbClient, err = db.NewDynamoDBClient(membersTable, inventoryTable, distributionsTable, listsTable)
 	if err != nil {
 		log.Fatalf("Failed to initialize DynamoDB client: %v", err)
 	}

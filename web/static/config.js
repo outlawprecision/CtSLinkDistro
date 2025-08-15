@@ -1,10 +1,10 @@
 // FlavaFlav Configuration
 const CONFIG = {
-    // API Configuration
-    API_BASE_URL: window.location.origin + '/api',
+    // API Configuration - Direct API Gateway URL
+    API_BASE_URL: 'https://xl6a8tnacj.execute-api.us-east-1.amazonaws.com/dev/api',
 
     // Environment detection
-    ENVIRONMENT: 'dev', // Will be overridden by deployment
+    ENVIRONMENT: 'dev',
 
     // UI Configuration
     UI: {
@@ -23,3 +23,4 @@ if (window.location.hostname.includes('cloudfront') || window.location.hostname.
 
 // Export for use in other scripts
 window.FLAVAFLAV_CONFIG = CONFIG;
+window.FLAVAFLAV_CONFIG.API_BASE_URL = CONFIG.API_BASE_URL;

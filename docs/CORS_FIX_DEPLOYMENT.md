@@ -1,165 +1,115 @@
-# CORS Fix Deployment Instructions
+# FlavaFlav CORS Fix Deployment Guide
 
-## Overview
-This document outlines the changes made to fix CORS issues in the FlavaFlav application when deployed to AWS.
+## Problem Summary
+The frontend was getting 403 errors when trying to access the API because:
+1. CloudFront was correctly forwarding `/api/*` requests to API Gateway
+2. API Gateway was adding the stage prefix (`/dev`) to the path
+3. The Lambda function wasn't recognizing paths like `/dev/api/members`
 
-## Changes Made
+## Solution Applied
 
-### 1. API Handler CORS Improvements (`internal/handlers/api.go`)
-- Enhanced CORS middleware to properly handle preflight requests
-- Changed OPTIONS response from `StatusOK (200)` to `StatusNoContent (204)` for better compliance
-- Added `X-Requested-With` to allowed headers
-- Added `Access-Control-Max-Age` header for caching preflight responses
+### 1. Frontend Changes (`web/static/app.js`)
+- Updated to use the configuration from `config.js` properly
+- Changed from hardcoded `window.location.origin` to `window.FLAVAFLAV_CONFIG.API_BASE_URL`
+- This ensures all API calls go through the same CloudFront distribution at `/api/*`
 
-### 2. CloudFormation Template Updates (`cloudformation/flavaflav-infrastructure.yaml`)
-- Added explicit OPTIONS method handlers for both root and proxy resources in API Gateway
-- Configured MOCK integration for OPTIONS requests to handle CORS preflight
-- Added proper CORS response headers at the API Gateway level
-- Updated CloudFront cache behavior to forward necessary headers for API requests:
-  - Authorization
-  - Content-Type
-  - X-Requested-With
-  - Accept
-  - Origin
-  - Referer
-- Added OPTIONS to cached methods for better performance
+### 2. Backend Changes (`internal/handlers/api.go`)
+- Modified the route setup to handle API Gateway stage prefixes
+- Now registers all routes with multiple patterns: `/api/*`, `/dev/api/*`, `/staging/api/*`, `/prod/api/*`
+- This allows the Lambda to handle requests regardless of the stage prefix
 
 ## Deployment Steps
 
-### 1. Build and Deploy Lambda Function
-
+### Step 1: Build and Deploy Lambda Function
 ```bash
-# Build the Lambda function
-make build-lambda
+# Build the Lambda function with the updated handler
+make lambda-build
 
-# Deploy the Lambda package to S3 (if using S3 for deployment)
-aws s3 cp bin/lambda.zip s3://sherwood-artifacts/flavaflav/lambda/flavaflav-lambda-${ENVIRONMENT}.zip
+# Deploy the Lambda update (this will build and upload)
+./scripts/deploy.sh -e dev --update-lambda
 ```
 
-### 2. Update CloudFormation Stack
-
+### Step 2: Upload Updated Frontend Files
 ```bash
-# For development environment
-aws cloudformation update-stack \
+# Get the S3 bucket name from your stack outputs
+BUCKET_NAME=$(aws cloudformation describe-stacks \
   --stack-name flavaflav-dev \
-  --template-body file://cloudformation/flavaflav-infrastructure.yaml \
-  --parameters file://cloudformation/parameters-dev.json \
-  --capabilities CAPABILITY_NAMED_IAM
-
-# For production environment
-aws cloudformation update-stack \
-  --stack-name flavaflav-prod \
-  --template-body file://cloudformation/flavaflav-infrastructure.yaml \
-  --parameters file://cloudformation/parameters-prod.json \
-  --capabilities CAPABILITY_NAMED_IAM
-```
-
-### 3. Wait for Stack Update to Complete
-
-```bash
-# Monitor stack update progress
-aws cloudformation wait stack-update-complete --stack-name flavaflav-${ENVIRONMENT}
-
-# Or watch the progress
-aws cloudformation describe-stack-events \
-  --stack-name flavaflav-${ENVIRONMENT} \
-  --query 'StackEvents[0:10]' \
-  --output table
-```
-
-### 4. Deploy Frontend Files to S3
-
-```bash
-# Sync frontend files to S3
-aws s3 sync web/static/ s3://flavaflav-static-${ENVIRONMENT}-${AWS_ACCOUNT_ID}/ \
-  --delete \
-  --cache-control "public, max-age=3600"
-```
-
-### 5. Invalidate CloudFront Cache
-
-```bash
-# Get CloudFront distribution ID
-DISTRIBUTION_ID=$(aws cloudformation describe-stacks \
-  --stack-name flavaflav-${ENVIRONMENT} \
-  --query 'Stacks[0].Outputs[?OutputKey==`CloudFrontDistributionId`].OutputValue' \
+  --region us-east-1 \
+  --query "Stacks[0].Outputs[?OutputKey=='S3BucketName'].OutputValue" \
   --output text)
 
-# Create invalidation
+# Upload the updated frontend files
+aws s3 cp web/static/app.js s3://$BUCKET_NAME/app.js --region us-east-1
+aws s3 cp web/static/config.js s3://$BUCKET_NAME/config.js --region us-east-1
+
+# Or sync all static files
+aws s3 sync web/static/ s3://$BUCKET_NAME/ --region us-east-1
+```
+
+### Step 3: Clear CloudFront Cache
+```bash
+# Get the CloudFront distribution ID
+DISTRIBUTION_ID=$(aws cloudformation describe-stacks \
+  --stack-name flavaflav-dev \
+  --region us-east-1 \
+  --query "Stacks[0].Outputs[?OutputKey=='CloudFrontDistributionId'].OutputValue" \
+  --output text)
+
+# If the above doesn't work (no output for distribution ID), list distributions
+aws cloudfront list-distributions --query "DistributionList.Items[?Comment=='FlavaFlav CDN - dev'].Id" --output text
+
+# Create an invalidation to clear the cache
 aws cloudfront create-invalidation \
-  --distribution-id ${DISTRIBUTION_ID} \
+  --distribution-id $DISTRIBUTION_ID \
   --paths "/*"
 ```
 
-## Testing CORS
+### Step 4: Test the Application
+1. Open your browser to: https://djo8q7hdb90li.cloudfront.net/
+2. Open the browser's Developer Tools (F12)
+3. Go to the Network tab
+4. Try loading different tabs (Members, Inventory, etc.)
+5. Verify that API calls to `/api/*` return 200 status codes
 
-After deployment, test CORS functionality:
+## How It Works Now
 
-### 1. Test Preflight Request
-```bash
-curl -X OPTIONS \
-  https://your-cloudfront-domain.cloudfront.net/api/members \
-  -H "Origin: https://your-cloudfront-domain.cloudfront.net" \
-  -H "Access-Control-Request-Method: GET" \
-  -H "Access-Control-Request-Headers: Content-Type" \
-  -v
-```
+1. **Frontend** at `https://djo8q7hdb90li.cloudfront.net/` makes requests to `/api/*`
+2. **CloudFront** receives requests at `https://djo8q7hdb90li.cloudfront.net/api/*`
+3. **CloudFront** forwards these to API Gateway at `https://efw22hfwjh.execute-api.us-east-1.amazonaws.com/dev/api/*`
+4. **API Gateway** passes the request to Lambda with the full path including `/dev`
+5. **Lambda** now recognizes both `/api/*` and `/dev/api/*` patterns and handles them correctly
+6. Response flows back through the same path
 
-Expected response headers:
-- `Access-Control-Allow-Origin: *`
-- `Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS`
-- `Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With`
+## Future Custom Domain Setup
 
-### 2. Test Actual API Request
-```bash
-curl -X GET \
-  https://your-cloudfront-domain.cloudfront.net/api/members \
-  -H "Origin: https://your-cloudfront-domain.cloudfront.net" \
-  -v
-```
-
-### 3. Browser Console Test
-Open the deployed application in your browser and check the console for any CORS errors. The application should now be able to make API calls without 403 errors.
+When you add a custom domain (e.g., `flavaflav.yourdomain.com`):
+1. The same CloudFront distribution will serve both static content and API
+2. No code changes needed - the frontend uses relative paths (`/api/*`)
+3. Everything will work seamlessly under your custom domain
 
 ## Troubleshooting
 
-### If CORS errors persist:
-
-1. **Check CloudWatch Logs**
+### If you still see 403 errors:
+1. **Check CloudFront invalidation status**: 
    ```bash
-   aws logs tail /aws/lambda/flavaflav-api-${ENVIRONMENT} --follow
+   aws cloudfront list-invalidations --distribution-id $DISTRIBUTION_ID
+   ```
+2. **Hard refresh your browser**: Ctrl+Shift+R (or Cmd+Shift+R on Mac)
+3. **Check Lambda logs**:
+   ```bash
+   aws logs tail /aws/lambda/flavaflav-api-dev --follow
    ```
 
-2. **Verify API Gateway Deployment**
-   - Ensure the API Gateway deployment includes the new OPTIONS methods
-   - Check that the deployment stage matches your environment
+### If API calls show old CloudFront URL:
+1. Your browser has cached the old JavaScript files
+2. Clear browser cache or use incognito/private mode
+3. Verify the S3 upload was successful:
+   ```bash
+   aws s3 ls s3://$BUCKET_NAME/ --region us-east-1
+   ```
 
-3. **CloudFront Cache**
-   - Ensure CloudFront invalidation completed successfully
-   - Wait 5-10 minutes for global propagation
-
-4. **Test Direct API Gateway URL**
-   - Try accessing the API directly via API Gateway URL (bypassing CloudFront)
-   - This helps isolate whether the issue is with API Gateway or CloudFront
-
-## Rollback Instructions
-
-If issues occur after deployment:
-
-```bash
-# Rollback CloudFormation stack to previous version
-aws cloudformation cancel-update-stack --stack-name flavaflav-${ENVIRONMENT}
-
-# Or update with previous template
-aws cloudformation update-stack \
-  --stack-name flavaflav-${ENVIRONMENT} \
-  --template-body file://backup/cloudformation/flavaflav-infrastructure.yaml \
-  --parameters file://cloudformation/parameters-${ENVIRONMENT}.json \
-  --capabilities CAPABILITY_NAMED_IAM
-```
-
-## Additional Notes
-
-- The CORS configuration allows all origins (`*`) for simplicity. In production, consider restricting to specific domains.
-- The `Access-Control-Max-Age` is set to 3600 seconds (1 hour) to reduce preflight requests.
-- CloudFront is configured to forward necessary headers for API requests while maintaining caching for static content.
+## Notes
+- The solution maintains flexibility for custom domains
+- No hardcoded URLs in the frontend
+- Works with any API Gateway stage (dev, staging, prod)
+- CORS headers are properly set in the Lambda function

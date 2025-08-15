@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 	"fmt"
+	"strconv"
 
 	"flavaflav/internal/models"
 
@@ -13,28 +14,36 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 )
 
-// DynamoDBClient wraps the AWS DynamoDB client
+// DynamoDBClient wraps the AWS DynamoDB client with four tables
 type DynamoDBClient struct {
-	client    *dynamodb.Client
-	tableName string
+	client             *dynamodb.Client
+	membersTable       string
+	inventoryTable     string
+	distributionsTable string
+	listsTable         string
 }
 
-// NewDynamoDBClient creates a new DynamoDB client
-func NewDynamoDBClient(tableName string) (*DynamoDBClient, error) {
+// NewDynamoDBClient creates a new DynamoDB client for four tables
+func NewDynamoDBClient(membersTable, inventoryTable, distributionsTable, listsTable string) (*DynamoDBClient, error) {
 	cfg, err := config.LoadDefaultConfig(context.TODO())
 	if err != nil {
 		return nil, fmt.Errorf("failed to load AWS config: %v", err)
 	}
 
 	return &DynamoDBClient{
-		client:    dynamodb.NewFromConfig(cfg),
-		tableName: tableName,
+		client:             dynamodb.NewFromConfig(cfg),
+		membersTable:       membersTable,
+		inventoryTable:     inventoryTable,
+		distributionsTable: distributionsTable,
+		listsTable:         listsTable,
 	}, nil
 }
 
-// Member operations
+// ==========================================
+// Member Operations (Members Table)
+// ==========================================
 
-// CreateMember creates a new member in DynamoDB
+// CreateMember creates a new member in the Members table
 func (db *DynamoDBClient) CreateMember(ctx context.Context, member *models.Member) error {
 	item, err := attributevalue.MarshalMap(member)
 	if err != nil {
@@ -42,7 +51,7 @@ func (db *DynamoDBClient) CreateMember(ctx context.Context, member *models.Membe
 	}
 
 	_, err = db.client.PutItem(ctx, &dynamodb.PutItemInput{
-		TableName: aws.String(db.tableName),
+		TableName: aws.String(db.membersTable),
 		Item:      item,
 	})
 	if err != nil {
@@ -55,7 +64,7 @@ func (db *DynamoDBClient) CreateMember(ctx context.Context, member *models.Membe
 // GetMember retrieves a member by Discord ID
 func (db *DynamoDBClient) GetMember(ctx context.Context, discordID string) (*models.Member, error) {
 	result, err := db.client.GetItem(ctx, &dynamodb.GetItemInput{
-		TableName: aws.String(db.tableName),
+		TableName: aws.String(db.membersTable),
 		Key: map[string]types.AttributeValue{
 			"discord_id": &types.AttributeValueMemberS{Value: discordID},
 		},
@@ -85,7 +94,7 @@ func (db *DynamoDBClient) UpdateMember(ctx context.Context, member *models.Membe
 	}
 
 	_, err = db.client.PutItem(ctx, &dynamodb.PutItemInput{
-		TableName: aws.String(db.tableName),
+		TableName: aws.String(db.membersTable),
 		Item:      item,
 	})
 	if err != nil {
@@ -95,11 +104,10 @@ func (db *DynamoDBClient) UpdateMember(ctx context.Context, member *models.Membe
 	return nil
 }
 
-// GetAllMembers retrieves all members
+// GetAllMembers retrieves all members from the Members table
 func (db *DynamoDBClient) GetAllMembers(ctx context.Context) ([]*models.Member, error) {
 	result, err := db.client.Scan(ctx, &dynamodb.ScanInput{
-		TableName:        aws.String(db.tableName),
-		FilterExpression: aws.String("attribute_exists(discord_id) AND attribute_not_exists(link_id) AND attribute_not_exists(distribution_id)"),
+		TableName: aws.String(db.membersTable),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to scan members: %v", err)
@@ -118,7 +126,9 @@ func (db *DynamoDBClient) GetAllMembers(ctx context.Context) ([]*models.Member, 
 	return members, nil
 }
 
-// Inventory operations
+// ==========================================
+// Inventory Operations (Inventory Table)
+// ==========================================
 
 // CreateInventoryLink creates a new inventory link
 func (db *DynamoDBClient) CreateInventoryLink(ctx context.Context, link *models.InventoryLink) error {
@@ -128,7 +138,7 @@ func (db *DynamoDBClient) CreateInventoryLink(ctx context.Context, link *models.
 	}
 
 	_, err = db.client.PutItem(ctx, &dynamodb.PutItemInput{
-		TableName: aws.String(db.tableName),
+		TableName: aws.String(db.inventoryTable),
 		Item:      item,
 	})
 	if err != nil {
@@ -141,7 +151,7 @@ func (db *DynamoDBClient) CreateInventoryLink(ctx context.Context, link *models.
 // GetInventoryLink retrieves a specific inventory link by ID
 func (db *DynamoDBClient) GetInventoryLink(ctx context.Context, linkID string) (*models.InventoryLink, error) {
 	result, err := db.client.GetItem(ctx, &dynamodb.GetItemInput{
-		TableName: aws.String(db.tableName),
+		TableName: aws.String(db.inventoryTable),
 		Key: map[string]types.AttributeValue{
 			"link_id": &types.AttributeValueMemberS{Value: linkID},
 		},
@@ -171,7 +181,7 @@ func (db *DynamoDBClient) UpdateInventoryLink(ctx context.Context, link *models.
 	}
 
 	_, err = db.client.PutItem(ctx, &dynamodb.PutItemInput{
-		TableName: aws.String(db.tableName),
+		TableName: aws.String(db.inventoryTable),
 		Item:      item,
 	})
 	if err != nil {
@@ -184,10 +194,10 @@ func (db *DynamoDBClient) UpdateInventoryLink(ctx context.Context, link *models.
 // GetAvailableInventoryLinks retrieves all available inventory links
 func (db *DynamoDBClient) GetAvailableInventoryLinks(ctx context.Context) ([]*models.InventoryLink, error) {
 	result, err := db.client.Scan(ctx, &dynamodb.ScanInput{
-		TableName:        aws.String(db.tableName),
-		FilterExpression: aws.String("attribute_exists(link_id) AND is_available = :available"),
+		TableName:        aws.String(db.inventoryTable),
+		FilterExpression: aws.String("is_available = :available"),
 		ExpressionAttributeValues: map[string]types.AttributeValue{
-			":available": &types.AttributeValueMemberBOOL{Value: true},
+			":available": &types.AttributeValueMemberS{Value: "true"},
 		},
 	})
 	if err != nil {
@@ -210,10 +220,10 @@ func (db *DynamoDBClient) GetAvailableInventoryLinks(ctx context.Context) ([]*mo
 // GetAvailableInventoryLinksByQuality retrieves available links by quality
 func (db *DynamoDBClient) GetAvailableInventoryLinksByQuality(ctx context.Context, quality string) ([]*models.InventoryLink, error) {
 	result, err := db.client.Scan(ctx, &dynamodb.ScanInput{
-		TableName:        aws.String(db.tableName),
-		FilterExpression: aws.String("attribute_exists(link_id) AND is_available = :available AND quality = :quality"),
+		TableName:        aws.String(db.inventoryTable),
+		FilterExpression: aws.String("is_available = :available AND quality = :quality"),
 		ExpressionAttributeValues: map[string]types.AttributeValue{
-			":available": &types.AttributeValueMemberBOOL{Value: true},
+			":available": &types.AttributeValueMemberS{Value: "true"},
 			":quality":   &types.AttributeValueMemberS{Value: quality},
 		},
 	})
@@ -234,7 +244,9 @@ func (db *DynamoDBClient) GetAvailableInventoryLinksByQuality(ctx context.Contex
 	return links, nil
 }
 
-// Distribution operations
+// ==========================================
+// Distribution Operations (Distributions Table)
+// ==========================================
 
 // CreateDistribution creates a new distribution record
 func (db *DynamoDBClient) CreateDistribution(ctx context.Context, distribution *models.Distribution) error {
@@ -243,8 +255,12 @@ func (db *DynamoDBClient) CreateDistribution(ctx context.Context, distribution *
 		return fmt.Errorf("failed to marshal distribution: %v", err)
 	}
 
+	// Add distribution_date for date-based queries (YYYY-MM-DD format)
+	distributionDate := distribution.DistributedAt.Format("2006-01-02")
+	item["distribution_date"] = &types.AttributeValueMemberS{Value: distributionDate}
+
 	_, err = db.client.PutItem(ctx, &dynamodb.PutItemInput{
-		TableName: aws.String(db.tableName),
+		TableName: aws.String(db.distributionsTable),
 		Item:      item,
 	})
 	if err != nil {
@@ -256,15 +272,17 @@ func (db *DynamoDBClient) CreateDistribution(ctx context.Context, distribution *
 
 // GetDistributionsByMember retrieves all distributions for a specific member
 func (db *DynamoDBClient) GetDistributionsByMember(ctx context.Context, memberID string) ([]*models.Distribution, error) {
-	result, err := db.client.Scan(ctx, &dynamodb.ScanInput{
-		TableName:        aws.String(db.tableName),
-		FilterExpression: aws.String("attribute_exists(distribution_id) AND member_id = :member_id"),
+	result, err := db.client.Query(ctx, &dynamodb.QueryInput{
+		TableName:              aws.String(db.distributionsTable),
+		IndexName:              aws.String("member-date-index"),
+		KeyConditionExpression: aws.String("member_id = :member_id"),
 		ExpressionAttributeValues: map[string]types.AttributeValue{
 			":member_id": &types.AttributeValueMemberS{Value: memberID},
 		},
+		ScanIndexForward: aws.Bool(false), // Sort by date descending
 	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to scan distributions: %v", err)
+		return nil, fmt.Errorf("failed to query distributions: %v", err)
 	}
 
 	var distributions []*models.Distribution
@@ -283,8 +301,7 @@ func (db *DynamoDBClient) GetDistributionsByMember(ctx context.Context, memberID
 // GetAllDistributions retrieves all distribution records
 func (db *DynamoDBClient) GetAllDistributions(ctx context.Context) ([]*models.Distribution, error) {
 	result, err := db.client.Scan(ctx, &dynamodb.ScanInput{
-		TableName:        aws.String(db.tableName),
-		FilterExpression: aws.String("attribute_exists(distribution_id)"),
+		TableName: aws.String(db.distributionsTable),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to scan all distributions: %v", err)
@@ -303,7 +320,9 @@ func (db *DynamoDBClient) GetAllDistributions(ctx context.Context) ([]*models.Di
 	return distributions, nil
 }
 
-// Distribution List operations
+// ==========================================
+// Distribution List Operations (Lists Table)
+// ==========================================
 
 // CreateDistributionList creates a new distribution list
 func (db *DynamoDBClient) CreateDistributionList(ctx context.Context, list *models.DistributionList) error {
@@ -312,8 +331,13 @@ func (db *DynamoDBClient) CreateDistributionList(ctx context.Context, list *mode
 		return fmt.Errorf("failed to marshal distribution list: %v", err)
 	}
 
+	// Add string version of is_active for GSI
+	item["is_active_str"] = &types.AttributeValueMemberS{
+		Value: strconv.FormatBool(list.IsActive),
+	}
+
 	_, err = db.client.PutItem(ctx, &dynamodb.PutItemInput{
-		TableName: aws.String(db.tableName),
+		TableName: aws.String(db.listsTable),
 		Item:      item,
 	})
 	if err != nil {
@@ -326,7 +350,7 @@ func (db *DynamoDBClient) CreateDistributionList(ctx context.Context, list *mode
 // GetDistributionList retrieves a distribution list by ID
 func (db *DynamoDBClient) GetDistributionList(ctx context.Context, listID string) (*models.DistributionList, error) {
 	result, err := db.client.GetItem(ctx, &dynamodb.GetItemInput{
-		TableName: aws.String(db.tableName),
+		TableName: aws.String(db.listsTable),
 		Key: map[string]types.AttributeValue{
 			"list_id": &types.AttributeValueMemberS{Value: listID},
 		},
@@ -355,8 +379,13 @@ func (db *DynamoDBClient) UpdateDistributionList(ctx context.Context, list *mode
 		return fmt.Errorf("failed to marshal distribution list: %v", err)
 	}
 
+	// Add string version of is_active for GSI
+	item["is_active_str"] = &types.AttributeValueMemberS{
+		Value: strconv.FormatBool(list.IsActive),
+	}
+
 	_, err = db.client.PutItem(ctx, &dynamodb.PutItemInput{
-		TableName: aws.String(db.tableName),
+		TableName: aws.String(db.listsTable),
 		Item:      item,
 	})
 	if err != nil {
@@ -369,8 +398,8 @@ func (db *DynamoDBClient) UpdateDistributionList(ctx context.Context, list *mode
 // GetActiveDistributionLists retrieves all active distribution lists
 func (db *DynamoDBClient) GetActiveDistributionLists(ctx context.Context) ([]*models.DistributionList, error) {
 	result, err := db.client.Scan(ctx, &dynamodb.ScanInput{
-		TableName:        aws.String(db.tableName),
-		FilterExpression: aws.String("attribute_exists(list_id) AND is_active = :active"),
+		TableName:        aws.String(db.listsTable),
+		FilterExpression: aws.String("is_active = :active"),
 		ExpressionAttributeValues: map[string]types.AttributeValue{
 			":active": &types.AttributeValueMemberBOOL{Value: true},
 		},

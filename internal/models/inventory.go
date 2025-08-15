@@ -2,6 +2,7 @@ package models
 
 import (
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -19,7 +20,7 @@ type InventoryLink struct {
 	Quality     string    `json:"quality" dynamodbav:"quality"`           // bronze, silver, gold
 	Category    string    `json:"category" dynamodbav:"category"`         // e.g., "Melee Type Links"
 	Bonus       string    `json:"bonus" dynamodbav:"bonus"`               // e.g., "3.75%"
-	IsAvailable bool      `json:"is_available" dynamodbav:"is_available"` // true if not distributed yet
+	IsAvailable string    `json:"is_available" dynamodbav:"is_available"` // "true" if not distributed yet, "false" otherwise
 	AddedBy     string    `json:"added_by" dynamodbav:"added_by"`
 	AddedDate   time.Time `json:"added_date" dynamodbav:"added_date"`
 	Notes       string    `json:"notes" dynamodbav:"notes"` // optional notes about this specific link
@@ -33,7 +34,7 @@ func NewInventoryLink(linkType, quality, category, bonus, addedBy string) *Inven
 		Quality:     quality,
 		Category:    category,
 		Bonus:       bonus,
-		IsAvailable: true,
+		IsAvailable: "true",
 		AddedBy:     addedBy,
 		AddedDate:   time.Now(),
 		Notes:       "",
@@ -42,12 +43,12 @@ func NewInventoryLink(linkType, quality, category, bonus, addedBy string) *Inven
 
 // MarkDistributed marks this link as distributed (no longer available)
 func (l *InventoryLink) MarkDistributed() {
-	l.IsAvailable = false
+	l.IsAvailable = "false"
 }
 
 // MarkAvailable marks this link as available again
 func (l *InventoryLink) MarkAvailable() {
-	l.IsAvailable = true
+	l.IsAvailable = "true"
 }
 
 // GetDisplayName returns a formatted display name for the link
@@ -55,10 +56,16 @@ func (l *InventoryLink) GetDisplayName() string {
 	return fmt.Sprintf("%s %s (%s)", l.Quality, l.LinkType, l.Bonus)
 }
 
-// generateLinkID creates a unique ID for a link
+// generateLinkID creates a unique ID for a link (sanitized for DynamoDB)
 func generateLinkID(linkType, quality string) string {
+	// Sanitize linkType by replacing spaces and special characters with underscores
+	sanitizedLinkType := strings.ReplaceAll(linkType, " ", "_")
+	sanitizedLinkType = strings.ReplaceAll(sanitizedLinkType, "/", "_")
+	sanitizedLinkType = strings.ReplaceAll(sanitizedLinkType, "-", "_")
+	sanitizedLinkType = strings.ReplaceAll(sanitizedLinkType, "%", "pct")
+
 	timestamp := time.Now().UnixNano()
-	return fmt.Sprintf("%s_%s_%d", quality, linkType, timestamp)
+	return fmt.Sprintf("%s_%s_%d", quality, sanitizedLinkType, timestamp)
 }
 
 // GetLinkBonus returns the standard bonus for a link type and quality

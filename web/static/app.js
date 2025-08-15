@@ -1,5 +1,5 @@
-// API Base URL - will be set based on environment
-const API_BASE = window.location.origin;
+// Use configuration from config.js
+const API_BASE = window.FLAVAFLAV_CONFIG ? window.FLAVAFLAV_CONFIG.API_BASE_URL : window.location.origin;
 
 // Global state
 let currentMembers = [];
@@ -68,7 +68,7 @@ function showTab(tabName) {
 async function loadDashboard() {
     try {
         // Load members for stats
-        const membersResponse = await fetch(`${API_BASE}/api/members`);
+        const membersResponse = await fetch(`${API_BASE}/members`);
         const membersData = await membersResponse.json();
 
         if (membersData.success) {
@@ -82,7 +82,7 @@ async function loadDashboard() {
         }
 
         // Load inventory summary
-        const inventoryResponse = await fetch(`${API_BASE}/api/inventory/summary`);
+        const inventoryResponse = await fetch(`${API_BASE}/inventory/summary`);
         const inventoryData = await inventoryResponse.json();
 
         if (inventoryData.success) {
@@ -123,7 +123,7 @@ async function loadDashboard() {
 // Members functions
 async function loadMembers() {
     try {
-        const response = await fetch(`${API_BASE}/api/members`);
+        const response = await fetch(`${API_BASE}/members`);
         const data = await response.json();
 
         if (data.success) {
@@ -172,7 +172,7 @@ function displayMembers(members) {
 // Inventory functions
 async function loadInventory() {
     try {
-        const response = await fetch(`${API_BASE}/api/inventory`);
+        const response = await fetch(`${API_BASE}/inventory`);
         const data = await response.json();
 
         if (data.success) {
@@ -240,7 +240,7 @@ async function spinWheel() {
 
     try {
         // Get eligible members
-        const response = await fetch(`${API_BASE}/api/distribution/eligible?quality=${quality}`);
+        const response = await fetch(`${API_BASE}/distribution/eligible?quality=${quality}`);
         const data = await response.json();
 
         if (!data.success) {
@@ -256,7 +256,7 @@ async function spinWheel() {
         }
 
         // Pick random winner
-        const winnerResponse = await fetch(`${API_BASE}/api/distribution/pick-winner?list_id=temp`, {
+        const winnerResponse = await fetch(`${API_BASE}/distribution/pick-winner?list_id=temp`, {
             method: 'POST'
         });
         const winnerData = await winnerResponse.json();
@@ -405,7 +405,7 @@ function showWinner(winner) {
 // History functions
 async function loadHistory() {
     try {
-        const response = await fetch(`${API_BASE}/api/distribution/history`);
+        const response = await fetch(`${API_BASE}/distribution/history`);
         const data = await response.json();
 
         if (data.success) {
@@ -587,7 +587,7 @@ async function handleAddMember(event) {
     };
 
     try {
-        const response = await fetch(`${API_BASE}/api/member/create`, {
+        const response = await fetch(`${API_BASE}/member/create`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
@@ -622,7 +622,7 @@ async function handleAddInventory(event) {
     };
 
     try {
-        const response = await fetch(`${API_BASE}/api/inventory/add`, {
+        const response = await fetch(`${API_BASE}/inventory/add`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
@@ -654,7 +654,7 @@ async function promoteMember(discordId) {
     }
 
     try {
-        const response = await fetch(`${API_BASE}/api/member/promote?discord_id=${discordId}`, {
+        const response = await fetch(`${API_BASE}/member/promote?discord_id=${discordId}`, {
             method: 'POST'
         });
 
