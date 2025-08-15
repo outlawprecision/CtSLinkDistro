@@ -26,7 +26,11 @@ A clean, focused web application and Discord bot for managing UO Outlands guild 
 
 ### Technology Stack
 - **Backend**: Go with clean, simple architecture
-- **Database**: AWS DynamoDB (single table design)
+- **Database**: AWS DynamoDB (four-table design)
+  - Members Table - Guild member information
+  - Inventory Table - Mastery link inventory
+  - Distributions Table - Distribution history
+  - Lists Table - Distribution lists for picking winners
 - **API**: AWS Lambda with API Gateway
 - **Frontend**: Vanilla HTML/CSS/JavaScript
 - **Discord**: DiscordGo with slash commands
@@ -125,6 +129,7 @@ DISCORD_GUILD_ID=your_guild_id
 - `GET /api/member?discord_id=<id>` - Get specific member
 - `POST /api/member/create` - Add new member (Maester only)
 - `POST /api/member/promote?discord_id=<id>` - Promote to officer
+- `GET /api/member/history?member_id=<id>` - Get member's distribution history
 
 ### Inventory
 - `GET /api/inventory` - List available links
@@ -133,8 +138,14 @@ DISCORD_GUILD_ID=your_guild_id
 
 ### Distribution
 - `GET /api/distribution/eligible?quality=<silver|gold>` - Get eligible members
-- `POST /api/distribution/pick-winner` - Random winner selection
-- `GET /api/distribution/history` - Distribution history
+- `GET /api/distribution/lists` - Get active distribution lists
+- `POST /api/distribution/create-list` - Create new distribution list (Maester only)
+- `POST /api/distribution/pick-winner?list_id=<id>` - Random winner selection
+- `POST /api/distribution/distribute?member_id=<id>` - Distribute link to member (Maester only)
+- `GET /api/distribution/history` - Get all distribution history (Maester only)
+
+### System
+- `GET /api/health` - Health check endpoint
 
 ## 🎯 Business Rules
 
@@ -193,6 +204,9 @@ type Member struct {
     SilverEligible bool      // Auto-calculated
     GoldEligible   bool      // Auto-calculated
     DaysInGuild    int       // Auto-calculated
+    AddedBy        string    // Who added this member
+    AddedDate      time.Time // When member was added
+    UpdatedAt      time.Time // Last update timestamp
 }
 ```
 
@@ -204,7 +218,10 @@ type InventoryLink struct {
     Quality     string    // bronze, silver, gold
     Category    string    // Link category
     Bonus       string    // e.g., "3.75%"
-    IsAvailable bool      // Distribution status
+    IsAvailable string    // "true" or "false" (string for DynamoDB)
+    AddedBy     string    // Who added this link
+    AddedDate   time.Time // When link was added
+    Notes       string    // Optional notes
 }
 ```
 
@@ -212,12 +229,29 @@ type InventoryLink struct {
 ```go
 type Distribution struct {
     DistributionID string    // Unique identifier
-    MemberID       string    // Who received it
-    LinkID         string    // Which link
+    MemberID       string    // Discord ID of recipient
+    MemberUsername string    // Discord username for display
+    LinkID         string    // Which link was distributed
     LinkType       string    // Link details
     Quality        string    // Link quality
+    Bonus          string    // Link bonus value
     Method         string    // "web" or "discord"
-    DistributedAt  time.Time // When
+    DistributedBy  string    // Who distributed the link
+    DistributedAt  time.Time // When distributed
+    Notes          string    // Optional notes
+}
+```
+
+### Distribution List
+```go
+type DistributionList struct {
+    ListID          string    // Unique identifier
+    ListName        string    // e.g., "Silver Links - January 2024"
+    Quality         string    // silver or gold
+    EligibleMembers []string  // Array of Discord IDs
+    CreatedBy       string    // Who created the list
+    CreatedAt       time.Time // When created
+    IsActive        bool      // Whether list is active
 }
 ```
 
@@ -225,17 +259,45 @@ type Distribution struct {
 
 ### AWS Infrastructure
 - **Lambda Function** - Serverless API
-- **DynamoDB Table** - Single table for all data
+- **DynamoDB Tables** - Four-table architecture
+  - `flavaflav-members-{env}` - Member data
+  - `flavaflav-inventory-{env}` - Link inventory
+  - `flavaflav-distributions-{env}` - Distribution history
+  - `flavaflav-lists-{env}` - Distribution lists
 - **API Gateway** - HTTP endpoints
 - **S3 + CloudFront** - Static file hosting
 - **IAM Roles** - Least-privilege access
 
+### Environments
+- **dev** - Development environment
+- **staging** - Staging environment for testing
+- **prod** - Production environment
+
 ### Make Targets
 ```bash
-make build          # Build all components
-make deploy-dev     # Deploy to development
-make deploy-prod    # Deploy to production
-make clean          # Clean build artifacts
+# Build targets
+make build              # Build all components
+make build-lambda       # Build Lambda function only
+make build-bot          # Build Discord bot only
+
+# Deployment targets
+make deploy-dev         # Deploy to development
+make deploy-staging     # Deploy to staging
+make deploy-prod        # Deploy to production
+
+# Lambda update targets (code only)
+make update-lambda-dev      # Update Lambda in dev
+make update-lambda-staging  # Update Lambda in staging
+make update-lambda-prod     # Update Lambda in prod
+
+# Utility targets
+make clean              # Clean build artifacts
+make deps               # Install dependencies
+make test               # Run tests
+make help               # Show all available commands
+
+# Static files
+make upload-static BUCKET=name  # Upload web files to S3
 ```
 
 ## 🤝 Contributing

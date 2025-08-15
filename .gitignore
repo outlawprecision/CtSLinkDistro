@@ -6,6 +6,9 @@
 *.dylib
 bin/
 bootstrap
+discord-bot
+lambda
+main
 lambda-deployment.zip
 lambda-deployment.tar.gz
 
